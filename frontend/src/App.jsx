@@ -91,19 +91,36 @@ function App() {
   const [toasts, setToasts] = useState([]);
   const [logLines, setLogLines] = useState(INITIAL_LOGS);
   const [dashboard, setDashboard] = useState(null);
+  const [backendStatus, setBackendStatus] = useState('checking');
   const hasActiveWorkflow = Boolean(jobId) || isLoading || status === 'processing' || status === 'pending';
+
+  const checkBackendHealth = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/health`);
+      if (!response.ok) {
+        setBackendStatus('offline');
+        return;
+      }
+
+      setBackendStatus('online');
+    } catch (error) {
+      setBackendStatus('offline');
+    }
+  };
 
   const fetchDashboardSummary = async () => {
     try {
       const response = await fetch(`${API_BASE}/dashboard`);
       if (!response.ok) {
+        setBackendStatus('offline');
         return;
       }
 
       const data = await response.json();
       setDashboard(data);
+      setBackendStatus('online');
     } catch (error) {
-      // Keep the UI usable even when the backend is offline.
+      setBackendStatus('offline');
     }
   };
 
@@ -129,7 +146,13 @@ function App() {
   }, [hasActiveWorkflow]);
 
   useEffect(() => {
+    void checkBackendHealth();
     void fetchDashboardSummary();
+    const intervalId = window.setInterval(() => {
+      void checkBackendHealth();
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
   }, []);
 
   const pushToast = (type, toastMessage) => {
@@ -401,8 +424,12 @@ function App() {
 
         <div className="header-right">
           <div className="status-pill">
-            <div className="status-dot"></div>
-            Backend Connected
+            <div className={`status-dot status-dot-${backendStatus}`}></div>
+            {backendStatus === 'online'
+              ? 'Backend Connected'
+              : backendStatus === 'offline'
+                ? 'Backend Offline'
+                : 'Checking Backend'}
           </div>
 
           <div className="toggle-wrap">
@@ -463,6 +490,12 @@ function App() {
         </aside>
 
         <main>
+          {backendStatus === 'offline' ? (
+            <div className="health-banner">
+              Backend is offline. Start FastAPI on `http://127.0.0.1:8000` before uploading files.
+            </div>
+          ) : null}
+
           {section === 'dashboard' ? (
             <section id="section-dashboard">
               <div className="page-header">
@@ -637,6 +670,7 @@ function App() {
 
               <FileUpload
                 apiBase={API_BASE}
+                backendOnline={backendStatus === 'online'}
                 demoRunId={demoRunId}
                 onDemoComplete={handleDemoComplete}
                 onToast={pushToast}

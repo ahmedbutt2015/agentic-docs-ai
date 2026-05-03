@@ -1,73 +1,90 @@
 # Project Plan and Milestones
 
-## Done
+## Current Status
 
-- [x] Setup repository structure and scaffolding
-- [x] Create backend FastAPI service with upload, status, and result endpoints
-- [x] Add database persistence for document jobs and results
-- [x] Implement async background processing with FastAPI background tasks
-- [x] Build the React frontend shell for dashboard, upload, and results views
-- [x] Restore the mockup-faithful frontend layout and interactions
-- [x] Integrate the frontend with live backend upload, status polling, and result rendering
-- [x] Add backend dashboard summary endpoint for real job stats and recent activity
-- [x] Add deterministic text parsing for text, HTML, and DOCX files without AI dependencies
-- [x] Add backend-generated metadata, issues, and score payloads for the frontend
-- [x] Default local persistence to SQLite while keeping `DATABASE_URL` override support
+- [x] FastAPI backend with `upload`, `status`, `result`, `dashboard`, and `health` endpoints
+- [x] PostgreSQL-backed job persistence
+- [x] React frontend wired to live backend data
+- [x] One-command local startup with `make dev`
+- [x] Backend offline detection and clearer upload errors in the frontend
+- [x] Mockup-faithful dashboard, upload, and results UI
+- [x] Deterministic parsing for text, HTML, and DOCX files
 
-## Next Backend Tasks
+## Completed Frontend and Backend Work
 
-- [ ] Add true PDF text extraction instead of placeholder summaries
-- [ ] Add image OCR pipeline for PNG/JPG/TIFF uploads
-- [ ] Add XLSX parsing for sheet previews and extracted cell content
-- [ ] Store structured result metadata and issues in dedicated database columns
-- [ ] Add API tests for upload, status, result, and dashboard endpoints
-- [ ] Add failure handling and retry-safe status updates for background jobs
-- [ ] Add file validation rules for unsupported formats and oversized uploads
+- [x] Restore the dashboard, upload, and results layouts
+- [x] Poll backend job status from the frontend
+- [x] Render live result metadata, score, entities, and issues
+- [x] Show real recent activity from the database
+- [x] Add backend health visibility in the UI
+- [x] Improve upload failure messages
+- [x] Standardize local startup and environment setup
+- [x] Lock local database direction to PostgreSQL
 
-## OCR and Extraction Backlog
+## Next Steps You Can Build
 
-- [ ] Evaluate Tesseract for local OCR quality and performance
-- [ ] Evaluate PaddleOCR as an alternative OCR backend
-- [ ] Add OCR preprocessing for rotation, denoise, and contrast normalization
-- [ ] Add page-level OCR progress tracking
-- [ ] Add confidence scores to extracted entities
-- [ ] Add parser selection by file type and MIME type
+### 1. OCR Implementation
 
-## Compliance and Reasoning Backlog
+- [ ] Choose the first OCR engine
+- [ ] Add PDF text extraction
+- [ ] Add image OCR for PNG/JPG/JPEG/TIFF
+- [ ] Store extracted full text in `document_jobs`
+- [ ] Return OCR confidence data in the API
+- [ ] Add page-level progress updates during OCR
 
-- [ ] Define the first real compliance rule set and rule output schema
-- [ ] Replace heuristic issues with actual compliance checks
-- [ ] Add document classification before compliance evaluation
-- [ ] Add explanation fields for every compliance finding
-- [ ] Add audit trail storage for rule execution steps
+### 2. Document Parsers
 
-## Retrieval and Vector Backlog
+- [ ] Add XLSX parsing
+- [ ] Add richer PDF metadata extraction
+- [ ] Normalize parser output to one shared schema
+- [ ] Add parser routing by MIME type and extension
+- [ ] Add validation for unsupported or corrupted files
 
-- [ ] Define chunking strategy for uploaded documents
-- [ ] Add embeddings provider abstraction
-- [ ] Choose initial vector store implementation
-- [ ] Store document chunks with metadata filters
-- [ ] Add retrieval endpoint for related clauses and prior documents
-- [ ] Add reranking step for retrieved context
+### 3. Embeddings and Vector Store
 
-## Agent and LangGraph Backlog
+- [ ] Define document chunking rules
+- [ ] Choose the embeddings model/provider
+- [ ] Choose the vector database
+- [ ] Add chunk metadata fields
+- [ ] Save chunks and embeddings after extraction
+- [ ] Add retrieval query helpers for regulations and prior documents
 
-- [ ] Define agent responsibilities and handoff contracts
-- [ ] Add tool interfaces for regulation lookup and prior-case search
-- [ ] Build a LangGraph orchestration prototype for document flow
-- [ ] Add retry and fallback branches for failed agent steps
-- [ ] Add structured trace output for every orchestrated run
+### 4. Agents and Orchestration
 
-## Platform Backlog
+- [ ] Define each agent’s responsibility and input/output schema
+- [ ] Build the ingestion-to-reasoning flow
+- [ ] Add LangGraph orchestration
+- [ ] Add retry/fallback logic between agent steps
+- [ ] Add traceable step logs for each agent run
 
-- [ ] Add authentication and role-based access control
-- [ ] Add per-user document ownership and history
-- [ ] Add frontend filters, search, and recent job drill-down
-- [ ] Add export formats beyond plain text reports
-- [ ] Add observability for latency, failures, and processing throughput
-- [ ] Add CI checks for backend and frontend builds
-- [ ] Add Docker-based local startup
+### 5. Compliance Logic
+
+- [ ] Define the compliance rule format
+- [ ] Add real compliance checks
+- [ ] Add structured findings with severity and explanation
+- [ ] Add framework-level scoring logic
+- [ ] Add audit trail records for every applied rule
+
+## Suggested Build Order
+
+- [ ] Start with real PDF and image OCR
+- [ ] Then normalize extraction output into one shared schema
+- [ ] Then add chunking and embeddings
+- [ ] Then plug in vector retrieval
+- [ ] Then build agent orchestration
+- [ ] Then replace the placeholder scoring/issues with real compliance logic
+
+## Frontend and Backend Follow-Up After OCR/Agents
+
+- [ ] Show OCR confidence and parser source in more detail
+- [ ] Add job history filtering and search
+- [ ] Add result drill-down pages
+- [ ] Add retry button for failed jobs
+- [ ] Add export formats beyond plain text
+- [ ] Add API tests for the live OCR and agent flows
 
 ## Notes
 
-Keep tasks small and concrete. Only mark items done when they are implemented in code and visible in the app or API.
+- Local development is PostgreSQL-first. Do not switch the app back to SQLite.
+- The remaining major workstreams are OCR, embeddings/vector storage, agents, orchestration, and real compliance rules.
+- Keep each new step shippable and testable before moving to the next one.

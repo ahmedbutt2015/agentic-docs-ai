@@ -25,7 +25,7 @@ function createRow(file, index) {
   };
 }
 
-function FileUpload({ apiBase, demoRunId, onDemoComplete, onToast, onUploadSuccess }) {
+function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast, onUploadSuccess }) {
   const inputRef = useRef(null);
   const [uploadRows, setUploadRows] = useState([]);
   const [error, setError] = useState('');
@@ -127,6 +127,11 @@ function FileUpload({ apiBase, demoRunId, onDemoComplete, onToast, onUploadSucce
   };
 
   const handleSelectedFiles = (fileList) => {
+    if (!backendOnline) {
+      setError(`Backend is not reachable at ${apiBase}. Start the FastAPI server and try again.`);
+      return;
+    }
+
     const files = Array.from(fileList || []);
     void queueFiles(files);
   };
@@ -184,12 +189,18 @@ function FileUpload({ apiBase, demoRunId, onDemoComplete, onToast, onUploadSucce
             <UploadIcon color="var(--cyan-bright)" />
             Upload Documents
           </div>
-          <button className="btn btn-secondary" type="button" onClick={() => inputRef.current?.click()}>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            disabled={!backendOnline}
+            onClick={() => inputRef.current?.click()}
+          >
             Browse Files
           </button>
           <input
             ref={inputRef}
             accept=".pdf,.docx,.xlsx,.png,.txt,.jpg,.jpeg"
+            disabled={!backendOnline}
             hidden
             multiple
             type="file"
@@ -202,11 +213,18 @@ function FileUpload({ apiBase, demoRunId, onDemoComplete, onToast, onUploadSucce
 
         <div className="card-body">
           <button
-            className={`upload-zone ${isDragging ? 'drag-over' : ''}`}
+            className={`upload-zone ${isDragging ? 'drag-over' : ''} ${backendOnline ? '' : 'disabled'}`}
             id="dropZone"
             type="button"
-            onClick={() => inputRef.current?.click()}
+            onClick={() => {
+              if (backendOnline) {
+                inputRef.current?.click();
+              }
+            }}
             onDragOver={(event) => {
+              if (!backendOnline) {
+                return;
+              }
               event.preventDefault();
               setIsDragging(true);
             }}
@@ -214,7 +232,9 @@ function FileUpload({ apiBase, demoRunId, onDemoComplete, onToast, onUploadSucce
             onDrop={(event) => {
               event.preventDefault();
               setIsDragging(false);
-              handleSelectedFiles(event.dataTransfer.files);
+              if (backendOnline) {
+                handleSelectedFiles(event.dataTransfer.files);
+              }
             }}
           >
             <div className="upload-icon">
@@ -232,6 +252,12 @@ function FileUpload({ apiBase, demoRunId, onDemoComplete, onToast, onUploadSucce
               <span className="file-type-pill pill-txt">TXT</span>
             </div>
           </button>
+
+          {!backendOnline ? (
+            <p className="error-text upload-inline-warning">
+              Backend is offline. Start `make backend` or `make dev` before uploading.
+            </p>
+          ) : null}
 
           <div className={`upload-progress ${uploadRows.length ? 'visible' : ''}`}>
             <div className="upload-list-spacer"></div>

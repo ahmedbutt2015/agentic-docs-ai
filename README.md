@@ -166,8 +166,48 @@ Local DB:
 - `port`: `5432`
 
 A `backend/.env` file has been added for local database configuration.
+A `backend/.env.example` file is available as the template for new environments.
 
 **Viewer:** Sequel Ace can connect to this database using `localhost:5432`, the local user, and the `regulus_ai` database.
+
+---
+
+## 🧰 Local Development
+
+### Prerequisites
+
+- PostgreSQL running locally on `127.0.0.1:5432`
+- A database named `regulus_ai`
+- A local Postgres user that can connect to `regulus_ai`
+- Node.js and npm
+- Python 3
+
+### One-Time Setup
+
+```bash
+make setup
+cp backend/.env.example backend/.env
+```
+
+Then update `backend/.env` with your Postgres username if needed.
+
+### Start Everything
+
+```bash
+make dev
+```
+
+This starts:
+
+- FastAPI backend at `http://127.0.0.1:8000`
+- Vite frontend at `http://127.0.0.1:5173`
+
+### Start Individually
+
+```bash
+make backend
+make frontend
+```
 
 ---
 
