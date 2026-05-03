@@ -16,6 +16,7 @@ Organizations deal with:
 - Manual review processes (slow, error-prone)
 
 ### Goal
+
 Build a system that:
 - Automatically extracts document data
 - Uses AI to reason over regulations
@@ -26,30 +27,9 @@ Build a system that:
 
 ## 🏗️ Architecture
 
-```text
-Frontend (React)
-│
-▼
-FastAPI Backend
-│
-┌──────┼──────────────┐
-│      │              │
-▼      ▼              ▼
-OCR   Vector DB     Postgres
-│      │
-└──┬───┘
-▼
-LangGraph (Multi-Agent Orchestration)
-│
-┌──┼───────────┬───────────┐
-▼  ▼           ▼           ▼
-Ingestion   Retrieval   Reasoning   Compliance
-Agent        Agent        Agent        Agent
-│           │           │
-└────────► MCP Tools ◄────────────┘
+![System Diagram](assets/system-diagram.png)
 
-Observability: Langfuse
-```
+**Observability:** Langfuse
 
 ---
 
@@ -60,33 +40,21 @@ Observability: Langfuse
 - Runs OCR
 - Structures extracted data
 
-**Tech:**
-- Tesseract / PaddleOCR
-- Python preprocessing
-
----
+**Tech:** Tesseract / PaddleOCR, Python preprocessing
 
 ### 2. Retrieval Agent (RAG)
 - Queries vector database
 - Retrieves relevant past documents or regulations
 
-**Tech:**
-- Embeddings (OpenAI / local)
-- Vector DB (Pinecone / Weaviate / Chroma)
-
----
+**Tech:** Embeddings (OpenAI / local), Vector DB (Pinecone / Weaviate / Chroma)
 
 ### 3. Reasoning Agent
 - Performs multi-step reasoning
 - Outputs structured JSON
 
----
-
 ### 4. Compliance Agent
 - Applies regulatory logic
 - Determines compliance status
-
----
 
 ### 5. Orchestrator Agent
 - Built with LangGraph
@@ -109,13 +77,11 @@ Agents call these tools dynamically.
 
 ## 🧠 RAG Pipeline
 
-```text
 Document → Chunking → Embeddings → Vector DB
-↓
-Retrieval Agent
-↓
-Context to LLM
-```
+              ↓
+      Retrieval Agent
+              ↓
+         Context to LLM
 
 Enhancements:
 - Metadata filtering
@@ -144,19 +110,15 @@ Enhancements:
 
 ## 📊 Observability
 
-Use:
+**Use:** Langfuse
 
-- Langfuse
-
-Track:
-
+**Track:**
 - Prompts & responses
 - Token usage
 - Latency
 - Failures
 
-Features:
-
+**Features:**
 - Prompt versioning
 - Full agent trace logging
 
@@ -164,7 +126,7 @@ Features:
 
 ## ⚙️ Backend (FastAPI)
 
-Endpoints:
+**Endpoints:**
 
 - `POST /upload` → Upload document
 - `GET /status/{id}` → Processing status
@@ -174,8 +136,7 @@ Endpoints:
 
 ## 🖥️ Frontend (React)
 
-Features:
-
+**Features:**
 - File upload UI
 - Display extracted data
 - Show compliance results
@@ -185,32 +146,24 @@ Features:
 
 ## 🔄 Async Processing
 
-Use:
+**Use:** Celery + Redis OR FastAPI background tasks
 
-- Celery + Redis OR FastAPI background tasks
-
-Purpose:
-
-- Handle OCR + LLM latency
-- Enable scalable workflows
+**Purpose:** Handle OCR + LLM latency, enable scalable workflows
 
 ---
 
 ## 🗄️ Storage
 
-- PostgreSQL:
-  - Documents
-  - Results
-  - Logs
+**PostgreSQL:**
+- Documents
+- Results
+- Logs
 
 ---
 
 ## 🧪 Evaluation
 
-- Create test cases:
-  - Valid documents
-  - Fraudulent documents
-
+- Create test cases (valid documents, fraudulent documents)
 - Compare outputs for consistency and accuracy
 
 ---
@@ -226,29 +179,24 @@ Purpose:
 ## 📅 Step-by-Step Plan
 
 ### Day 1
-
 - Setup FastAPI
 - Build file upload API
 - Integrate OCR
 
 ### Day 2
-
 - Setup vector DB
 - Implement embeddings
 - Basic RAG pipeline
 
 ### Day 3
-
 - Build agents with LangChain
 - Implement tool calling
 
 ### Day 4
-
 - Implement LangGraph orchestration
 - Add compliance logic
 
 ### Day 5
-
 - Add observability (Langfuse)
 - Build simple React UI
 
@@ -269,7 +217,6 @@ Purpose:
 ## 🎯 Outcome
 
 This project demonstrates:
-
 - Agentic AI systems
 - Production-ready architecture
 - AI + backend + frontend integration
@@ -279,13 +226,12 @@ This project demonstrates:
 
 ## 🏁 Repository Name
 
-**Recommended:**
-
-- `regulus-ai`
+**Recommended:** `regulus-ai`
 
 **Alternatives:**
-
 - `compliance-copilot-ai`
 - `agentic-docs-ai`
 - `auditmind-ai`
 - `lexagent`
+
+Copy the entire block above into a file named `README.md`.
