@@ -159,6 +159,16 @@ Enhancements:
 - Results
 - Logs
 
+Local DB:
+- `database`: `regulus_ai`
+- `user`: your macOS username (example: `ahmedthebutt`)
+- `host`: `localhost`
+- `port`: `5432`
+
+A `backend/.env` file has been added for local database configuration.
+
+**Viewer:** Sequel Ace can connect to this database using `localhost:5432`, the local user, and the `regulus_ai` database.
+
 ---
 
 ## 🧪 Evaluation
@@ -181,7 +191,7 @@ Enhancements:
 ### Day 1
 - Setup FastAPI
 - Build file upload API
-- Integrate OCR
+- Add PostgreSQL persistence for jobs and results
 
 ### Day 2
 - Setup vector DB
@@ -233,5 +243,3 @@ This project demonstrates:
 - `agentic-docs-ai`
 - `auditmind-ai`
 - `lexagent`
-
-Copy the entire block above into a file named `README.md`.
