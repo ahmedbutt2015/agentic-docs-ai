@@ -18,29 +18,92 @@ import {
   UploadIcon,
 } from './components/Icons';
 import {
-  DASHBOARD_STATS,
   DEMO_FILE_NAME,
   DEMO_RESULT,
   INITIAL_LOGS,
   LIVE_LOG_TAIL,
-  RECENT_ACTIVITY,
 } from './mockData';
 import './styles.css';
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
+const STATUS_COLORS = {
+  completed: 'var(--green-bright)',
+  processing: 'var(--blue-bright)',
+  pending: '#fcd34d',
+  failed: 'var(--red)',
+};
+
+function formatTimestamp(value) {
+  if (!value) {
+    return 'Waiting for processing';
+  }
+
+  const date = new Date(value);
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function formatRelativeTime(value) {
+  if (!value) {
+    return 'just now';
+  }
+
+  const now = Date.now();
+  const target = new Date(value).getTime();
+  const diffSeconds = Math.max(Math.round((now - target) / 1000), 0);
+
+  if (diffSeconds < 60) {
+    return 'just now';
+  }
+
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
+  }
+
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  }
+
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+}
+
 function App() {
   const [jobId, setJobId] = useState(null);
   const [status, setStatus] = useState('');
   const [result, setResult] = useState(null);
+  const [resultMeta, setResultMeta] = useState(null);
   const [message, setMessage] = useState('');
   const [section, setSection] = useState('dashboard');
   const [isLoading, setIsLoading] = useState(false);
-  const [activeFileName, setActiveFileName] = useState(DEMO_FILE_NAME);
+  const [activeFileName, setActiveFileName] = useState('');
   const [isDarkToggleOn, setIsDarkToggleOn] = useState(true);
   const [demoRunId, setDemoRunId] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [logLines, setLogLines] = useState(INITIAL_LOGS);
+  const [dashboard, setDashboard] = useState(null);
+
+  const fetchDashboardSummary = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/dashboard`);
+      if (!response.ok) {
+        return;
+      }
+
+      const data = await response.json();
+      setDashboard(data);
+    } catch (error) {
+      // Keep the UI usable even when the backend is offline.
+    }
+  };
 
   useEffect(() => {
     let index = 0;
@@ -55,6 +118,10 @@ function App() {
     }, 1800);
 
     return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    void fetchDashboardSummary();
   }, []);
 
   const pushToast = (type, toastMessage) => {
@@ -72,9 +139,11 @@ function App() {
     setActiveFileName(fileName);
     setMessage('Queued for processing');
     setResult(null);
+    setResultMeta(null);
     setIsLoading(true);
     setSection('results');
     pushToast('success', `${fileName} uploaded — analysis queued`);
+    void fetchDashboardSummary();
     pollStatus(id);
   };
 
@@ -84,13 +153,21 @@ function App() {
       const data = await response.json();
       setStatus(data.status);
       setMessage(data.message);
+      setActiveFileName(data.filename);
 
       if (data.status === 'completed') {
         const resultResponse = await fetch(`${API_BASE}/result/${id}`);
         const resultData = await resultResponse.json();
         setResult(resultData.result);
+        setResultMeta({
+          filename: resultData.filename,
+          createdAt: resultData.created_at,
+          updatedAt: resultData.updated_at,
+        });
+        setActiveFileName(resultData.filename);
         setIsLoading(false);
         pushToast('success', 'Processing complete — results ready');
+        void fetchDashboardSummary();
       } else if (data.status === 'processing' || data.status === 'pending') {
         window.setTimeout(() => pollStatus(id), 1200);
       }
@@ -107,6 +184,7 @@ function App() {
     setStatus('processing');
     setMessage('Loading demo workflow');
     setResult(null);
+    setResultMeta(null);
     setIsLoading(true);
     setActiveFileName(DEMO_FILE_NAME);
     setDemoRunId((current) => current + 1);
@@ -128,6 +206,11 @@ function App() {
 
     window.setTimeout(() => {
       setResult(DEMO_RESULT);
+      setResultMeta({
+        filename: DEMO_RESULT.metadata.filename,
+        createdAt: DEMO_RESULT.metadata.uploaded_at,
+        updatedAt: DEMO_RESULT.metadata.processed_at,
+      });
       setStatus('completed');
       setMessage('Compliance check finished — score: 89/100');
       setIsLoading(false);
@@ -152,6 +235,12 @@ function App() {
       '',
       'Entities',
       ...Object.entries(result.entities || {}).map(([key, value]) => `${key}: ${String(value)}`),
+      '',
+      'Metadata',
+      ...Object.entries(result.metadata || {}).map(([key, value]) => `${key}: ${String(value ?? '')}`),
+      '',
+      'Issues',
+      ...(result.issues || []).map((issue) => `${issue.severity} ${issue.rule}: ${issue.description}`),
     ].join('\n');
 
     const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
@@ -207,6 +296,73 @@ function App() {
     alert: AlertCircleIcon,
     pulse: PulseLineIcon,
   };
+
+  const dashboardStats = [
+    {
+      label: 'Docs Processed',
+      value: String(dashboard?.total_jobs ?? 0),
+      change: `${dashboard?.completed_jobs ?? 0} completed`,
+      changeType: 'up',
+      accent: 'linear-gradient(90deg,#3b82f6,#06b6d4)',
+      iconBackground: 'rgba(59,130,246,0.1)',
+      iconColor: '#60a5fa',
+      iconKey: 'document',
+      valueColor: 'var(--blue-bright)',
+    },
+    {
+      label: 'Avg. Score',
+      value: `${dashboard?.average_score ?? 0}%`,
+      change: `${dashboard?.processing_jobs ?? 0} processing now`,
+      changeType: 'up',
+      accent: 'linear-gradient(90deg,#10b981,#34d399)',
+      iconBackground: 'rgba(16,185,129,0.1)',
+      iconColor: '#34d399',
+      iconKey: 'check',
+      valueColor: 'var(--green-bright)',
+    },
+    {
+      label: 'Detected Issues',
+      value: String(dashboard?.total_issues ?? 0),
+      change: `${dashboard?.failed_jobs ?? 0} failed`,
+      changeType: 'down',
+      accent: 'linear-gradient(90deg,#f59e0b,#fcd34d)',
+      iconBackground: 'rgba(245,158,11,0.1)',
+      iconColor: '#fcd34d',
+      iconKey: 'alert',
+      valueColor: '#fcd34d',
+    },
+    {
+      label: 'Pending Jobs',
+      value: String((dashboard?.pending_jobs ?? 0) + (dashboard?.processing_jobs ?? 0)),
+      change: `${dashboard?.pending_jobs ?? 0} queued`,
+      changeType: 'up',
+      accent: 'linear-gradient(90deg,#6b21a8,#a855f7)',
+      iconBackground: 'rgba(168,85,247,0.1)',
+      iconColor: '#c4b5fd',
+      iconKey: 'pulse',
+      valueColor: '#c4b5fd',
+    },
+  ];
+
+  const recentActivity = (dashboard?.recent_jobs || []).map((job) => {
+    const color = STATUS_COLORS[job.status] || 'var(--blue-bright)';
+    const description =
+      job.status === 'completed'
+        ? `completed — ${job.issue_count} issue${job.issue_count === 1 ? '' : 's'}`
+        : job.status === 'processing'
+          ? 'is processing'
+          : job.status === 'pending'
+            ? 'is queued'
+            : 'requires attention';
+    const scoreText = job.score != null ? ` · Score: ${job.score}%` : '';
+
+    return {
+      title: job.filename,
+      description,
+      time: `${formatRelativeTime(job.updated_at || job.created_at)}${scoreText}`,
+      color,
+    };
+  });
 
   return (
     <div id="app" className="app-container">
@@ -303,7 +459,10 @@ function App() {
               <div className="page-header">
                 <div>
                   <div className="page-title">Compliance Overview</div>
-                  <div className="page-subtitle">Last updated May 3, 2026 · 3 documents queued</div>
+                  <div className="page-subtitle">
+                    Last updated {formatTimestamp(new Date().toISOString())} ·{' '}
+                    {(dashboard?.pending_jobs ?? 0) + (dashboard?.processing_jobs ?? 0)} documents queued
+                  </div>
                 </div>
 
                 <div className="page-actions">
@@ -319,7 +478,7 @@ function App() {
               </div>
 
               <div className="stats-row">
-                {DASHBOARD_STATS.map((stat) => {
+                {dashboardStats.map((stat) => {
                   const IconComponent = statIcons[stat.iconKey];
 
                   return (
@@ -419,7 +578,7 @@ function App() {
                     </div>
                   </div>
                   <div className="activity-list">
-                    {RECENT_ACTIVITY.map((activity) => (
+                    {(recentActivity.length ? recentActivity : []).map((activity) => (
                       <div key={`${activity.title}-${activity.time}`} className="activity-item">
                         <div className="activity-dot" style={{ background: activity.color }}></div>
                         <div className="activity-content">
@@ -430,6 +589,17 @@ function App() {
                         </div>
                       </div>
                     ))}
+                    {!recentActivity.length ? (
+                      <div className="activity-item">
+                        <div className="activity-dot" style={{ background: 'var(--text-muted)' }}></div>
+                        <div className="activity-content">
+                          <div className="activity-text">
+                            <strong>No backend jobs yet</strong> Upload a document to populate live activity.
+                          </div>
+                          <div className="activity-time">Waiting for first document</div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -463,7 +633,7 @@ function App() {
                 <div>
                   <div className="page-title">Analysis Results</div>
                   <div className="page-subtitle">
-                    {activeFileName} · Processed May 3, 2026 at 09:41 UTC
+                    {activeFileName || 'No document selected'} · Processed {formatTimestamp(resultMeta?.updatedAt)}
                   </div>
                 </div>
               </div>

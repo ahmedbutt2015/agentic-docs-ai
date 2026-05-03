@@ -8,7 +8,6 @@ import {
   ShieldCheckIcon,
   TagIcon,
 } from './Icons';
-import { COMPLIANCE_ISSUES } from '../mockData';
 
 function getEntityType(key, value) {
   const content = `${key} ${String(value)}`.toLowerCase();
@@ -159,9 +158,12 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
 
   const highlightedText = useMemo(() => buildHighlightedContent(result?.text || '', entities), [entities, result?.text]);
 
-  const score = 89;
+  const score = result?.score?.value ?? 0;
   const scoreCircumference = 238.76;
   const scoreOffset = scoreCircumference - (scoreCircumference * score) / 100;
+  const issues = result?.issues || [];
+  const frameworks = result?.score?.frameworks || [];
+  const metadata = result?.metadata || {};
 
   const toggleSection = (sectionKey) => {
     setOpenSections((sections) => ({
@@ -210,8 +212,8 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
             >
               <span className="collapsible-title">
                 <AlertCircleIcon color="#fcd34d" />
-                Compliance Issues
-                <span className="badge badge-amber">3 found</span>
+                Detected Issues
+                <span className="badge badge-amber">{issues.length} found</span>
               </span>
               <ChevronDownIcon className="chevron" />
             </button>
@@ -225,10 +227,10 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {COMPLIANCE_ISSUES.map((issue) => (
+                  {issues.map((issue) => (
                     <tr key={issue.rule}>
                       <td>
-                        <span className={`severity-dot ${issue.severityClass}`}>{issue.severity}</span>
+                        <span className={`severity-dot ${issue.severity_class}`}>{issue.severity}</span>
                       </td>
                       <td>
                         <code className="rule-code">{issue.rule}</code>
@@ -236,6 +238,13 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
                       <td className="issue-description">{issue.description}</td>
                     </tr>
                   ))}
+                  {!issues.length ? (
+                    <tr>
+                      <td colSpan="3" className="issue-description empty-table-cell">
+                        No issues were generated for this document.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -247,7 +256,7 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
             <div className="card-header">
               <div className="card-title">
                 <ShieldCheckIcon color="var(--cyan-bright)" />
-                Compliance Score
+                Processing Score
               </div>
             </div>
             <div className="compliance-score-ring">
@@ -281,14 +290,45 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
               </div>
 
               <div className="score-info">
-                <div className="score-label">Mostly Compliant</div>
-                <div className="score-sub">3 issues require attention before approval</div>
+                <div className="score-label">{result?.score?.label || 'No score'}</div>
+                <div className="score-sub">{result?.score?.summary || 'No backend summary available yet.'}</div>
                 <div className="score-badges">
-                  <span className="badge badge-green">GDPR ✓</span>
-                  <span className="badge badge-amber">SOC2 ~</span>
-                  <span className="badge badge-green">ISO 27001 ✓</span>
+                  {frameworks.map((framework) => (
+                    <span
+                      key={`${framework.name}-${framework.status}`}
+                      className={`badge ${
+                        framework.status === 'complete'
+                          ? 'badge-green'
+                          : framework.status === 'partial'
+                            ? 'badge-amber'
+                            : framework.status === 'pending'
+                              ? 'badge-blue'
+                              : 'badge-muted'
+                      }`}
+                    >
+                      {framework.name}
+                    </span>
+                  ))}
                 </div>
                 <div className="result-file-name">{fileName}</div>
+                <div className="metadata-grid">
+                  <div className="metadata-item">
+                    <span className="metadata-label">Size</span>
+                    <span className="metadata-value">{metadata.file_size_label || '—'}</span>
+                  </div>
+                  <div className="metadata-item">
+                    <span className="metadata-label">Type</span>
+                    <span className="metadata-value">{metadata.extension || '—'}</span>
+                  </div>
+                  <div className="metadata-item">
+                    <span className="metadata-label">Words</span>
+                    <span className="metadata-value">{metadata.word_count ?? 0}</span>
+                  </div>
+                  <div className="metadata-item">
+                    <span className="metadata-label">Source</span>
+                    <span className="metadata-value">{metadata.text_source || '—'}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -312,6 +352,14 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
                   <span className="entity-confidence">{entity.confidence}</span>
                 </div>
               ))}
+              {!entities.length ? (
+                <div className="entity-row entity-row-empty">
+                  <div className="entity-main">
+                    <div className="entity-value">No entities detected yet.</div>
+                    <div className="entity-meta">Upload a text-rich document for stronger results.</div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

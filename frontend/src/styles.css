@@ -1024,6 +1024,12 @@ main {
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+.badge-muted {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-secondary);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
 .activity-list {
   display: flex;
   flex-direction: column;
@@ -1184,6 +1190,11 @@ main {
   font-size: 12px;
 }
 
+.empty-table-cell {
+  text-align: center;
+  padding: 18px 22px;
+}
+
 .compliance-score-ring {
   display: flex;
   align-items: center;
@@ -1235,6 +1246,35 @@ main {
   font-family: 'Roboto Mono', monospace;
 }
 
+.metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.metadata-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.metadata-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.metadata-value {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-family: 'Roboto Mono', monospace;
+}
+
 .entity-list {
   display: flex;
   flex-direction: column;
@@ -1255,6 +1295,10 @@ main {
 
 .entity-row:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+.entity-row-empty {
+  cursor: default;
 }
 
 .entity-type {

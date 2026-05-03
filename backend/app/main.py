@@ -5,12 +5,13 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 
 from app.config import UPLOAD_DIR
 from app.database import SessionLocal, init_db
 from app.models import DocumentJob
-from app.schemas import UploadResponse, StatusResponse, ResultResponse
-from app.services.ocr import extract_document_data
+from app.schemas import DashboardResponse, RecentJobResponse, ResultResponse, StatusResponse, UploadResponse
+from app.services.ocr import build_result_payload, extract_document_data
 
 app = FastAPI(
     title="Regulus AI Backend",
@@ -47,16 +48,16 @@ def process_document(job_id: str, file_path: Path) -> None:
             return
 
         job.status = "processing"
-        job.message = "Running OCR and metadata extraction"
+        job.message = "Extracting document text and metadata"
         db.commit()
 
         time.sleep(1)
-        result = extract_document_data(file_path)
+        result = extract_document_data(file_path, filename=job.filename, uploaded_at=job.created_at)
 
         job.result_text = result["text"]
         job.result_entities = result["entities"]
         job.status = "completed"
-        job.message = "Processing complete"
+        job.message = "Document data is ready"
         db.commit()
     finally:
         db.close()
@@ -87,9 +88,10 @@ async def upload_document(
     )
     db.add(job)
     db.commit()
+    db.refresh(job)
 
     background_tasks.add_task(process_document, job_id, target_path)
-    return UploadResponse(id=job_id, status="pending")
+    return UploadResponse(id=job_id, status="pending", filename=file.filename)
 
 
 @app.get("/status/{job_id}", response_model=StatusResponse)
@@ -97,7 +99,14 @@ def get_status(job_id: str, db: Session = Depends(get_db)) -> StatusResponse:
     job = db.get(DocumentJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return StatusResponse(id=job_id, status=job.status, message=job.message)
+    return StatusResponse(
+        id=job_id,
+        status=job.status,
+        message=job.message,
+        filename=job.filename,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
 
 
 @app.get("/result/{job_id}", response_model=ResultResponse)
@@ -108,14 +117,88 @@ def get_result(job_id: str, db: Session = Depends(get_db)) -> ResultResponse:
 
     result_data = None
     if job.result_text is not None or job.result_entities is not None:
-        result_data = {
-            "text": job.result_text or "",
-            "entities": job.result_entities or {},
-        }
+        result_data = build_result_payload(
+            file_path=Path(job.file_path),
+            filename=job.filename,
+            uploaded_at=job.created_at,
+            processed_at=job.updated_at,
+            text=job.result_text,
+            entities=job.result_entities,
+        )
 
     return ResultResponse(
         id=job_id,
         status=job.status,
         message=job.message,
+        filename=job.filename,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
         result=result_data,
+    )
+
+
+@app.get("/dashboard", response_model=DashboardResponse)
+def get_dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
+    jobs = db.query(DocumentJob).order_by(desc(DocumentJob.created_at)).all()
+    completed_jobs = [job for job in jobs if job.status == "completed"]
+    processing_jobs = [job for job in jobs if job.status == "processing"]
+    pending_jobs = [job for job in jobs if job.status == "pending"]
+    failed_jobs = [job for job in jobs if job.status == "failed"]
+
+    recent_jobs = []
+    score_values = []
+    total_issues = 0
+
+    for job in jobs[:5]:
+        score = None
+        issue_count = 0
+
+        if job.result_text is not None or job.result_entities is not None:
+            payload = build_result_payload(
+                file_path=Path(job.file_path),
+                filename=job.filename,
+                uploaded_at=job.created_at,
+                processed_at=job.updated_at,
+                text=job.result_text,
+                entities=job.result_entities,
+            )
+            score = payload["score"]["value"]
+            issue_count = len(payload["issues"])
+
+        recent_jobs.append(
+            RecentJobResponse(
+                id=job.id,
+                filename=job.filename,
+                status=job.status,
+                message=job.message,
+                created_at=job.created_at,
+                updated_at=job.updated_at,
+                score=score,
+                issue_count=issue_count,
+            )
+        )
+
+    for job in completed_jobs:
+        payload = build_result_payload(
+            file_path=Path(job.file_path),
+            filename=job.filename,
+            uploaded_at=job.created_at,
+            processed_at=job.updated_at,
+            text=job.result_text,
+            entities=job.result_entities,
+        )
+        score_values.append(payload["score"]["value"])
+        total_issues += len(payload["issues"])
+
+    average_score = round(sum(score_values) / len(score_values)) if score_values else 0
+
+    return DashboardResponse(
+        total_jobs=len(jobs),
+        completed_jobs=len(completed_jobs),
+        processing_jobs=len(processing_jobs),
+        pending_jobs=len(pending_jobs),
+        failed_jobs=len(failed_jobs),
+        total_issues=total_issues,
+        average_score=average_score,
+        recent_jobs=recent_jobs,
     )

@@ -164,19 +164,19 @@ export const FRAMEWORKS = [
 export const COMPLIANCE_ISSUES = [
   {
     severity: 'High',
-    severityClass: 'sev-high',
+    severity_class: 'sev-high',
     rule: 'GDPR-Art.28',
     description: 'Data Processing Agreement missing — required for sub-processors',
   },
   {
     severity: 'Medium',
-    severityClass: 'sev-medium',
+    severity_class: 'sev-medium',
     rule: 'SOC2-CC6.1',
     description: 'No mention of encryption standards for data at rest',
   },
   {
     severity: 'Low',
-    severityClass: 'sev-low',
+    severity_class: 'sev-low',
     rule: 'ISO-A.9.4',
     description: 'Access control policy reference is outdated (v2.1 required)',
   },
@@ -200,4 +200,30 @@ export const DEMO_RESULT = {
     gdpr_clause: 'Article 13 GDPR',
     termination_notice: "30 days' written notice",
   },
+  metadata: {
+    filename: 'contract_q1_2026.pdf',
+    extension: '.pdf',
+    mime_type: 'application/pdf',
+    file_size_bytes: 2411724,
+    file_size_label: '2.3 MB',
+    text_source: 'demo-pdf',
+    uploaded_at: '2026-05-03T09:41:00Z',
+    processed_at: '2026-05-03T09:41:16Z',
+    character_count: 739,
+    word_count: 108,
+    line_count: 8,
+    page_count: 4,
+  },
+  score: {
+    value: 89,
+    label: 'Ready',
+    summary: 'The demo document includes extractable text, identified entities, and a small set of rule-based issues.',
+    frameworks: [
+      { name: 'Upload Metadata', status: 'complete' },
+      { name: 'Text Extraction', status: 'complete' },
+      { name: 'Entity Detection', status: 'complete' },
+      { name: 'Deferred OCR/AI', status: 'pending' },
+    ],
+  },
+  issues: COMPLIANCE_ISSUES,
 };
