@@ -1,8 +1,3 @@
-Here’s your **complete project document in Markdown format** (ready for GitHub README):
-
----
-
-```md
 # 🚀 Regulus AI – Agentic Compliance & Document Intelligence Platform
 
 ## 🧠 Overview
@@ -31,8 +26,7 @@ Build a system that:
 
 ## 🏗️ Architecture
 
-```
-
+```text
 Frontend (React)
 │
 ▼
@@ -51,11 +45,10 @@ LangGraph (Multi-Agent Orchestration)
 ▼  ▼           ▼           ▼
 Ingestion   Retrieval   Reasoning   Compliance
 Agent        Agent        Agent        Agent
-│           │           │           │
+│           │           │
 └────────► MCP Tools ◄────────────┘
 
 Observability: Langfuse
-
 ```
 
 ---
@@ -116,15 +109,13 @@ Agents call these tools dynamically.
 
 ## 🧠 RAG Pipeline
 
-```
-
+```text
 Document → Chunking → Embeddings → Vector DB
 ↓
 Retrieval Agent
 ↓
 Context to LLM
-
-````
+```
 
 Enhancements:
 - Metadata filtering
@@ -134,8 +125,10 @@ Enhancements:
 
 ## 📄 OCR Pipeline
 
-**Input:** PDF / Image  
+**Input:** PDF / Image
+
 **Output:**
+
 ```json
 {
   "entities": {
@@ -145,7 +138,7 @@ Enhancements:
   },
   "text": "full extracted text"
 }
-````
+```
 
 ---
 
@@ -153,19 +146,19 @@ Enhancements:
 
 Use:
 
-* Langfuse
+- Langfuse
 
 Track:
 
-* Prompts & responses
-* Token usage
-* Latency
-* Failures
+- Prompts & responses
+- Token usage
+- Latency
+- Failures
 
 Features:
 
-* Prompt versioning
-* Full agent trace logging
+- Prompt versioning
+- Full agent trace logging
 
 ---
 
@@ -173,9 +166,9 @@ Features:
 
 Endpoints:
 
-* `POST /upload` → Upload document
-* `GET /status/{id}` → Processing status
-* `GET /result/{id}` → Final output
+- `POST /upload` → Upload document
+- `GET /status/{id}` → Processing status
+- `GET /result/{id}` → Final output
 
 ---
 
@@ -183,10 +176,10 @@ Endpoints:
 
 Features:
 
-* File upload UI
-* Display extracted data
-* Show compliance results
-* Optional: agent workflow visualization
+- File upload UI
+- Display extracted data
+- Show compliance results
+- Optional: agent workflow visualization
 
 ---
 
@@ -194,41 +187,39 @@ Features:
 
 Use:
 
-* Celery + Redis OR FastAPI background tasks
+- Celery + Redis OR FastAPI background tasks
 
 Purpose:
 
-* Handle OCR + LLM latency
-* Enable scalable workflows
+- Handle OCR + LLM latency
+- Enable scalable workflows
 
 ---
 
 ## 🗄️ Storage
 
-* PostgreSQL:
-
-  * Documents
-  * Results
-  * Logs
+- PostgreSQL:
+  - Documents
+  - Results
+  - Logs
 
 ---
 
 ## 🧪 Evaluation
 
-* Create test cases:
+- Create test cases:
+  - Valid documents
+  - Fraudulent documents
 
-  * Valid documents
-  * Fraudulent documents
-
-* Compare outputs for consistency and accuracy
+- Compare outputs for consistency and accuracy
 
 ---
 
 ## 📦 Deployment (Later)
 
-* Dockerize services
-* Add CI/CD
-* Deploy on AWS / Azure / GCP / Railway
+- Dockerize services
+- Add CI/CD
+- Deploy on AWS / Azure / GCP / Railway
 
 ---
 
@@ -236,42 +227,42 @@ Purpose:
 
 ### Day 1
 
-* Setup FastAPI
-* Build file upload API
-* Integrate OCR
+- Setup FastAPI
+- Build file upload API
+- Integrate OCR
 
 ### Day 2
 
-* Setup vector DB
-* Implement embeddings
-* Basic RAG pipeline
+- Setup vector DB
+- Implement embeddings
+- Basic RAG pipeline
 
 ### Day 3
 
-* Build agents with LangChain
-* Implement tool calling
+- Build agents with LangChain
+- Implement tool calling
 
 ### Day 4
 
-* Implement LangGraph orchestration
-* Add compliance logic
+- Implement LangGraph orchestration
+- Add compliance logic
 
 ### Day 5
 
-* Add observability (Langfuse)
-* Build simple React UI
+- Add observability (Langfuse)
+- Build simple React UI
 
 ---
 
 ## 🔥 Key Features
 
-* Multi-agent system
-* RAG with vector DB
-* OCR integration
-* MCP tool usage
-* Observability & tracing
-* Full-stack architecture
-* Real-world use case
+- Multi-agent system
+- RAG with vector DB
+- OCR integration
+- MCP tool usage
+- Observability & tracing
+- Full-stack architecture
+- Real-world use case
 
 ---
 
@@ -279,10 +270,10 @@ Purpose:
 
 This project demonstrates:
 
-* Agentic AI systems
-* Production-ready architecture
-* AI + backend + frontend integration
-* Enterprise-level thinking
+- Agentic AI systems
+- Production-ready architecture
+- AI + backend + frontend integration
+- Enterprise-level thinking
 
 ---
 
@@ -290,21 +281,11 @@ This project demonstrates:
 
 **Recommended:**
 
-* `regulus-ai`
+- `regulus-ai`
 
 **Alternatives:**
 
-* `compliance-copilot-ai`
-* `agentic-docs-ai`
-* `auditmind-ai`
-* `lexagent`
-
-```
-
----
-
-If you want next, I can:
-- :contentReference[oaicite:0]{index=0}
-- Or :contentReference[oaicite:1]{index=1}
-- Or :contentReference[oaicite:2]{index=2}
-```
+- `compliance-copilot-ai`
+- `agentic-docs-ai`
+- `auditmind-ai`
+- `lexagent`
