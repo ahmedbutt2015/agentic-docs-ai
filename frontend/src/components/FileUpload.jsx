@@ -38,6 +38,36 @@ function FileUpload({ apiBase, demoRunId, onDemoComplete, onToast, onUploadSucce
     setUploadRows((rows) => rows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
   };
 
+  const getUploadErrorMessage = async (response, uploadError) => {
+    if (response) {
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          return typeof payload.detail === 'string' ? payload.detail : JSON.stringify(payload.detail);
+        }
+      } catch {
+        // Fall back to plain text below.
+      }
+
+      try {
+        const text = await response.text();
+        if (text) {
+          return text;
+        }
+      } catch {
+        // Ignore and use generic fallback below.
+      }
+
+      return `Upload failed with status ${response.status}.`;
+    }
+
+    if (uploadError instanceof TypeError) {
+      return `Backend is not reachable at ${apiBase}. Start the FastAPI server and try again.`;
+    }
+
+    return uploadError?.message || 'Upload failed.';
+  };
+
   const uploadFile = async (row) => {
     let progress = 0;
     const progressInterval = window.setInterval(() => {
@@ -55,7 +85,8 @@ function FileUpload({ apiBase, demoRunId, onDemoComplete, onToast, onUploadSucce
       });
 
       if (!response.ok) {
-        throw new Error('Upload failed.');
+        const message = await getUploadErrorMessage(response);
+        throw new Error(message);
       }
 
       const data = await response.json();
@@ -74,7 +105,8 @@ function FileUpload({ apiBase, demoRunId, onDemoComplete, onToast, onUploadSucce
         statusLabel: 'Failed',
         badgeClass: 'badge-red',
       });
-      setError(uploadError.message || 'Upload failed.');
+      const message = await getUploadErrorMessage(null, uploadError);
+      setError(message);
       onToast('error', `Upload failed for ${row.name}`);
     }
   };

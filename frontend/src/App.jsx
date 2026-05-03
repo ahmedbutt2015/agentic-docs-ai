@@ -18,6 +18,7 @@ import {
   UploadIcon,
 } from './components/Icons';
 import {
+  ACTIVE_LOGS,
   DEMO_FILE_NAME,
   DEMO_RESULT,
   INITIAL_LOGS,
@@ -90,6 +91,7 @@ function App() {
   const [toasts, setToasts] = useState([]);
   const [logLines, setLogLines] = useState(INITIAL_LOGS);
   const [dashboard, setDashboard] = useState(null);
+  const hasActiveWorkflow = Boolean(jobId) || isLoading || status === 'processing' || status === 'pending';
 
   const fetchDashboardSummary = async () => {
     try {
@@ -106,6 +108,12 @@ function App() {
   };
 
   useEffect(() => {
+    if (!hasActiveWorkflow) {
+      setLogLines(INITIAL_LOGS);
+      return undefined;
+    }
+
+    setLogLines(ACTIVE_LOGS);
     let index = 0;
     const intervalId = window.setInterval(() => {
       if (index >= LIVE_LOG_TAIL.length) {
@@ -118,7 +126,7 @@ function App() {
     }, 1800);
 
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [hasActiveWorkflow]);
 
   useEffect(() => {
     void fetchDashboardSummary();
@@ -188,6 +196,7 @@ function App() {
     setIsLoading(true);
     setActiveFileName(DEMO_FILE_NAME);
     setDemoRunId((current) => current + 1);
+    setLogLines(ACTIVE_LOGS);
     pushToast('info', `Loading demo document: ${DEMO_FILE_NAME}`);
   };
 
@@ -506,25 +515,27 @@ function App() {
                       <ClockIcon color="var(--cyan-bright)" />
                       Agent Workflow
                     </div>
-                    <span className="badge badge-green">Live</span>
+                    <span className={`badge ${hasActiveWorkflow ? 'badge-green' : 'badge-muted'}`}>
+                      {hasActiveWorkflow ? 'Live' : 'Idle'}
+                    </span>
                   </div>
                   <div className="card-body">
                     <div className="pipeline-viz">
-                      <div className="pipeline-step done">
+                      <div className={`pipeline-step ${hasActiveWorkflow ? 'done' : ''}`}>
                         <div className="step-node">
                           <UploadIcon color="#22d3ee" />
                         </div>
                         <div className="step-label">Ingest</div>
                       </div>
-                      <div className="pipeline-step done">
+                      <div className={`pipeline-step ${hasActiveWorkflow ? 'done' : ''}`}>
                         <div className="step-node">
                           <DocumentIcon color="#22d3ee" />
                         </div>
                         <div className="step-label">OCR</div>
                       </div>
-                      <div className="pipeline-step active">
+                      <div className={`pipeline-step ${hasActiveWorkflow ? 'active' : ''}`}>
                         <div className="step-node">
-                          <div className="spinner"></div>
+                          {hasActiveWorkflow ? <div className="spinner"></div> : <ClockIcon color="var(--text-muted)" />}
                         </div>
                         <div className="step-label">Reasoning</div>
                       </div>
@@ -566,7 +577,14 @@ function App() {
                           <span className="job-status-value">{message || 'Waiting for the next document run'}</span>
                         </div>
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="job-status-grid">
+                        <div className="job-status-item job-status-wide">
+                          <span className="job-status-label">Status</span>
+                          <span className="job-status-value">No active document run. Upload a file to start processing.</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

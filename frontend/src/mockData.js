@@ -82,6 +82,14 @@ export const RECENT_ACTIVITY = [
 
 export const INITIAL_LOGS = [
   {
+    time: 'Idle',
+    type: 'info',
+    message: 'Waiting for a document upload to start the pipeline.',
+  },
+];
+
+export const ACTIVE_LOGS = [
+  {
     time: '09:41:02',
     type: 'info',
     message: '[INGEST]  contract_q1_2026.pdf received (2.3 MB)',
