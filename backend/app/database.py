@@ -20,3 +20,9 @@ def init_db() -> None:
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
     Base.metadata.create_all(bind=engine)
+
+    if DATABASE_URL.startswith("postgresql"):
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS result_compliance JSON")
+            )

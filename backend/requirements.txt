@@ -12,3 +12,5 @@ openpyxl
 tiktoken
 huggingface_hub
 pgvector
+langgraph
+anthropic

@@ -64,6 +64,33 @@ class WarningResponse(BaseModel):
     message: str
 
 
+class FindingResponse(BaseModel):
+    rule_id: str
+    framework: str
+    status: str
+    severity: str
+    explanation: str
+    evidence: Optional[str] = None
+
+
+class FrameworkSummaryResponse(BaseModel):
+    framework: str
+    rules_evaluated: int
+    passed: int
+    warned: int
+    failed: int
+
+
+class ComplianceReportResponse(BaseModel):
+    score: int
+    label: str
+    summary: str
+    frameworks: List[FrameworkSummaryResponse] = Field(default_factory=list)
+    findings: List[FindingResponse] = Field(default_factory=list)
+    llm_provider: str
+    llm_model: str
+
+
 class PageBlockResponse(BaseModel):
     text: str
     bbox: Optional[List[float]] = None
@@ -85,6 +112,7 @@ class ResultPayload(BaseModel):
     issues: List[IssueResponse] = Field(default_factory=list)
     pages: List[PageResponse] = Field(default_factory=list)
     warnings: List[WarningResponse] = Field(default_factory=list)
+    compliance: Optional[ComplianceReportResponse] = None
 
 
 class ResultResponse(BaseModel):

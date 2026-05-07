@@ -18,6 +18,7 @@ class DocumentJob(Base):
     file_path = Column(String, nullable=False)
     result_text = Column(Text, nullable=True)
     result_entities = Column(JSON, nullable=True)
+    result_compliance = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

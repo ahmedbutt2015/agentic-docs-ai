@@ -7,10 +7,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
-from app.config import EMBEDDING_MODEL, UPLOAD_DIR
+from app.agents.graph import run_compliance_graph
+from app.agents.rules import DEFAULT_FRAMEWORKS
+from app.config import (
+    ANTHROPIC_MODEL,
+    EMBEDDING_MODEL,
+    LLM_MODEL,
+    LLM_PROVIDER,
+    UPLOAD_DIR,
+)
 from app.database import SessionLocal, init_db
 from app.models import DocumentJob
 from app.schemas import (
+    ComplianceReportResponse,
     DashboardResponse,
     RecentJobResponse,
     ResultResponse,
@@ -161,11 +170,47 @@ def process_document(job_id: str, file_path: Path) -> None:
             db.commit()
             return
 
+        job.message = "Running compliance agents"
+        db.commit()
+
+        compliance_summary = "skipped"
+        try:
+            active_model = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else LLM_MODEL
+            with pipeline_log.timed() as timer:
+                report = run_compliance_graph(
+                    job_id=job_id,
+                    doc_filename=job.filename,
+                    doc_text=result["text"],
+                    provider=LLM_PROVIDER,
+                    model=active_model,
+                    active_frameworks=list(DEFAULT_FRAMEWORKS),
+                )
+            if report is not None:
+                job.result_compliance = report.model_dump()
+                compliance_summary = (
+                    f"score={report.score} label={report.label} "
+                    f"findings={len(report.findings)}"
+                )
+                pipeline_log.section("AGENT.GRAPH-DONE", time=timer.fmt())
+                pipeline_log.kv(
+                    score=report.score,
+                    label=report.label,
+                    findings=len(report.findings),
+                    frameworks=",".join(s.framework for s in report.frameworks),
+                )
+            else:
+                pipeline_log.section("AGENT.GRAPH-DONE", time=timer.fmt())
+                pipeline_log.line("no report produced")
+        except Exception as exc:
+            pipeline_log.section("ERROR", phase="agents", error=exc.__class__.__name__)
+            pipeline_log.line(str(exc))
+            compliance_summary = f"failed ({exc.__class__.__name__})"
+
         job.status = "completed"
-        if chunks_indexed:
-            job.message = f"Document data is ready ({chunks_indexed} chunks indexed)"
-        else:
-            job.message = "Document data is ready (no chunks to index)"
+        chunk_part = (
+            f"{chunks_indexed} chunks indexed" if chunks_indexed else "no chunks indexed"
+        )
+        job.message = f"Document data is ready ({chunk_part}; compliance {compliance_summary})"
         db.commit()
 
         pipeline_log.section("DONE", job_id=job_id[:8], status=job.status)
@@ -236,6 +281,11 @@ def get_result(job_id: str, db: Session = Depends(get_db)) -> ResultResponse:
             text=job.result_text,
             entities=job.result_entities,
         )
+        if job.result_compliance:
+            try:
+                result_data["compliance"] = ComplianceReportResponse(**job.result_compliance)
+            except Exception:
+                result_data["compliance"] = None
 
     return ResultResponse(
         id=job_id,

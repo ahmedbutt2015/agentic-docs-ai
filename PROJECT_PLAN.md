@@ -56,11 +56,13 @@
 
 ### 4. Agents and Orchestration
 
-- [ ] Define each agent's responsibility and input/output schema
-- [ ] Build the ingestion-to-reasoning flow
-- [ ] Add LangGraph orchestration
-- [ ] Add retry/fallback logic between agent steps
-- [ ] Add traceable step logs for each agent run
+- [x] Define each agent's responsibility and input/output schema — Pydantic types for `Finding`, `ComplianceReport`, `FrameworkSummary`; TypedDict `ComplianceState`
+- [x] Build the ingestion-to-reasoning flow — Retrieve → Reason → Score, wired after embedding in `process_document`
+- [x] Add LangGraph orchestration — 3-node `StateGraph` in `app/agents/graph.py`
+- [x] Add retry/fallback logic between agent steps — JSON-parse retries in `reason_node`; graph degrades gracefully on LLM errors without failing the job
+- [x] Add traceable step logs for each agent run — `pipeline_log` traces for `AGENT.RETRIEVE`, `AGENT.REASON`, `AGENT.SCORE`, `AGENT.GRAPH-DONE`
+- [ ] (v2) Specialized retrieval agent and compliance agent splits
+- [ ] (v2) MCP tool calling (`search_regulations`, `fetch_previous_cases`, `validate_rules`)
 
 ### 5. Compliance Logic
 
