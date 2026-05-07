@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.services import pdf_extractor, xlsx_extractor
+
 
 TEXT_EXTENSIONS = {
     ".txt",
@@ -27,6 +29,8 @@ TEXT_EXTENSIONS = {
 }
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
 
+MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
 MONTH_PATTERN = (
     r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|"
     r"Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
@@ -39,10 +43,13 @@ def extract_document_data(
     uploaded_at: Optional[datetime] = None,
     processed_at: Optional[datetime] = None,
 ) -> Dict[str, Any]:
-    text, text_source = _extract_text(file_path)
+    extraction = run_extraction(file_path)
+    text = extraction["full_text"]
     entities = _extract_entities(text)
-    metadata = _build_metadata(file_path, filename or file_path.name, text, text_source, uploaded_at, processed_at)
-    issues = _build_issues(text, entities, metadata)
+    metadata = _build_metadata(
+        file_path, filename or file_path.name, text, extraction["meta"], uploaded_at, processed_at
+    )
+    issues = _build_issues(text, entities, metadata, extraction["warnings"])
     score = _build_score(text, entities, issues, metadata)
 
     return {
@@ -51,6 +58,8 @@ def extract_document_data(
         "metadata": metadata,
         "score": score,
         "issues": issues,
+        "pages": extraction["pages"],
+        "warnings": extraction["warnings"],
     }
 
 
@@ -62,11 +71,11 @@ def build_result_payload(
     text: Optional[str],
     entities: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    safe_text = text or ""
+    extraction = run_extraction(file_path)
+    safe_text = text if text is not None else extraction["full_text"]
     safe_entities = entities or {}
-    text_source = _infer_text_source(file_path, safe_text)
-    metadata = _build_metadata(file_path, filename, safe_text, text_source, uploaded_at, processed_at)
-    issues = _build_issues(safe_text, safe_entities, metadata)
+    metadata = _build_metadata(file_path, filename, safe_text, extraction["meta"], uploaded_at, processed_at)
+    issues = _build_issues(safe_text, safe_entities, metadata, extraction["warnings"])
     score = _build_score(safe_text, safe_entities, issues, metadata)
 
     return {
@@ -75,37 +84,146 @@ def build_result_payload(
         "metadata": metadata,
         "score": score,
         "issues": issues,
+        "pages": extraction["pages"],
+        "warnings": extraction["warnings"],
     }
 
 
-def _extract_text(file_path: Path) -> tuple[str, str]:
+def run_extraction(file_path: Path) -> Dict[str, Any]:
+    """Route a file to the right specialized extractor and return a unified shape."""
     extension = file_path.suffix.lower()
+    pre_warnings = _validate_file(file_path)
 
-    if extension in TEXT_EXTENSIONS:
-        return _clean_text(_read_text_file(file_path)), "text"
-
-    if extension == ".docx":
-        return _clean_text(_read_docx_text(file_path)), "docx"
+    if any(w["code"] in {"FILE-MISSING", "FILE-OVERSIZED"} for w in pre_warnings):
+        return _empty_extraction(
+            text_source="error",
+            engine="none",
+            warnings=pre_warnings,
+        )
 
     if extension == ".pdf":
-        page_count = _count_pdf_pages(file_path)
-        text = (
-            "PDF uploaded successfully. Full text extraction is not enabled yet, "
-            f"but {page_count or 'unknown'} page(s) were detected from the file structure."
+        result = pdf_extractor.extract_pdf_text(file_path)
+        result["meta"]["text_source"] = "pdf-native"
+        result["warnings"] = pre_warnings + result["warnings"]
+        return result
+
+    if extension == ".xlsx":
+        result = xlsx_extractor.extract_xlsx_text(file_path)
+        result["meta"]["text_source"] = "xlsx"
+        result["warnings"] = pre_warnings + result["warnings"]
+        return result
+
+    if extension in TEXT_EXTENSIONS:
+        text = _clean_text(_read_text_file(file_path))
+        return _wrap_text_extraction(
+            text=text,
+            text_source="text",
+            engine="plain",
+            warnings=pre_warnings,
         )
-        return text, "pdf-placeholder"
+
+    if extension == ".docx":
+        text = _clean_text(_read_docx_text(file_path))
+        warnings = list(pre_warnings)
+        if "internal document XML could not be parsed" in text.lower():
+            warnings.append(
+                {"code": "DOCX-CORRUPTED", "message": "DOCX archive is missing or unreadable."}
+            )
+        return _wrap_text_extraction(
+            text=text,
+            text_source="docx",
+            engine="docx-zip",
+            warnings=warnings,
+        )
 
     if extension in IMAGE_EXTENSIONS:
-        return (
-            "Image uploaded successfully. OCR is not enabled yet, so only file metadata is available for this document.",
-            "image-placeholder",
+        placeholder = (
+            "Image uploaded successfully. OCR is not enabled yet, so only file metadata is "
+            "available for this document."
+        )
+        return _wrap_text_extraction(
+            text=placeholder,
+            text_source="image-placeholder",
+            engine="placeholder",
+            warnings=pre_warnings,
         )
 
-    return (
+    placeholder = (
         f"{file_path.suffix.upper() or 'Unknown'} file uploaded successfully. "
-        "Deep parsing for this file type is planned but not enabled yet.",
-        "binary-placeholder",
+        "Deep parsing for this file type is planned but not enabled yet."
     )
+    return _wrap_text_extraction(
+        text=placeholder,
+        text_source="binary-placeholder",
+        engine="placeholder",
+        warnings=pre_warnings,
+    )
+
+
+def _validate_file(file_path: Path) -> List[Dict[str, str]]:
+    warnings: List[Dict[str, str]] = []
+    if not file_path.exists():
+        warnings.append({"code": "FILE-MISSING", "message": "File not found at the expected path."})
+        return warnings
+
+    size = file_path.stat().st_size
+    if size == 0:
+        warnings.append({"code": "FILE-EMPTY", "message": "File is zero bytes."})
+    if size > MAX_FILE_SIZE_BYTES:
+        warnings.append(
+            {
+                "code": "FILE-OVERSIZED",
+                "message": (
+                    f"File is {size} bytes, exceeding the {MAX_FILE_SIZE_BYTES}-byte limit; "
+                    "extraction was skipped."
+                ),
+            }
+        )
+
+    return warnings
+
+
+def _empty_extraction(text_source: str, engine: str, warnings: List[Dict[str, str]]) -> Dict[str, Any]:
+    return {
+        "full_text": "",
+        "pages": [],
+        "meta": {
+            "source": text_source,
+            "engine": engine,
+            "page_count": 0,
+            "title": None,
+            "author": None,
+            "created_at": None,
+            "is_encrypted": False,
+            "avg_confidence": 0.0,
+            "text_source": text_source,
+        },
+        "warnings": warnings,
+    }
+
+
+def _wrap_text_extraction(
+    text: str,
+    text_source: str,
+    engine: str,
+    warnings: List[Dict[str, str]],
+) -> Dict[str, Any]:
+    return {
+        "full_text": text,
+        "pages": [],
+        "meta": {
+            "source": text_source,
+            "engine": engine,
+            "page_count": None,
+            "title": None,
+            "author": None,
+            "created_at": None,
+            "is_encrypted": False,
+            "avg_confidence": 1.0,
+            "text_source": text_source,
+        },
+        "warnings": warnings,
+    }
 
 
 def _read_text_file(file_path: Path) -> str:
@@ -192,14 +310,14 @@ def _build_metadata(
     file_path: Path,
     filename: str,
     text: str,
-    text_source: str,
+    parser_meta: Dict[str, Any],
     uploaded_at: Optional[datetime],
     processed_at: Optional[datetime],
 ) -> Dict[str, Any]:
     stat_result = file_path.stat() if file_path.exists() else None
     file_size = stat_result.st_size if stat_result else 0
     mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-    page_count = _count_pdf_pages(file_path) if file_path.suffix.lower() == ".pdf" else None
+    text_source = parser_meta.get("text_source") or parser_meta.get("source") or "unknown"
 
     return {
         "filename": filename,
@@ -208,16 +326,26 @@ def _build_metadata(
         "file_size_bytes": file_size,
         "file_size_label": _format_file_size(file_size),
         "text_source": text_source,
+        "parser_engine": parser_meta.get("engine"),
         "uploaded_at": uploaded_at,
         "processed_at": processed_at,
         "character_count": len(text),
         "word_count": len(text.split()),
         "line_count": len([line for line in text.splitlines() if line.strip()]) or (1 if text else 0),
-        "page_count": page_count,
+        "page_count": parser_meta.get("page_count"),
+        "document_title": parser_meta.get("title"),
+        "document_author": parser_meta.get("author"),
+        "document_created_at": parser_meta.get("created_at"),
+        "is_encrypted": bool(parser_meta.get("is_encrypted")),
     }
 
 
-def _build_issues(text: str, entities: Dict[str, Any], metadata: Dict[str, Any]) -> List[Dict[str, str]]:
+def _build_issues(
+    text: str,
+    entities: Dict[str, Any],
+    metadata: Dict[str, Any],
+    warnings: List[Dict[str, str]],
+) -> List[Dict[str, str]]:
     issues: List[Dict[str, str]] = []
 
     if metadata["text_source"].endswith("placeholder"):
@@ -226,7 +354,10 @@ def _build_issues(text: str, entities: Dict[str, Any], metadata: Dict[str, Any])
                 "severity": "High",
                 "severity_class": "sev-high",
                 "rule": "EXTRACT-001",
-                "description": "Full text extraction is not enabled for this file type yet, so the result only contains metadata and a placeholder summary.",
+                "description": (
+                    "Full text extraction is not enabled for this file type yet, so the result only "
+                    "contains metadata and a placeholder summary."
+                ),
             }
         )
 
@@ -270,7 +401,35 @@ def _build_issues(text: str, entities: Dict[str, Any], metadata: Dict[str, Any])
             }
         )
 
+    for warning in warnings:
+        issues.append(
+            {
+                "severity": _warning_severity(warning["code"]),
+                "severity_class": _warning_severity_class(warning["code"]),
+                "rule": warning["code"],
+                "description": warning["message"],
+            }
+        )
+
     return issues
+
+
+def _warning_severity(code: str) -> str:
+    if code in {"FILE-MISSING", "FILE-OVERSIZED", "PDF-CORRUPTED", "PDF-ENCRYPTED",
+                "XLSX-CORRUPTED", "XLSX-ENCRYPTED", "DOCX-CORRUPTED", "PDF-NO-TEXT"}:
+        return "High"
+    if code in {"PDF-LOW-TEXT", "PDF-PAGE-LIMIT", "XLSX-SHEET-LIMIT", "XLSX-ROW-LIMIT",
+                "PDF-PAGE-ERROR", "XLSX-SHEET-ERROR"}:
+        return "Medium"
+    return "Low"
+
+
+def _warning_severity_class(code: str) -> str:
+    return {
+        "High": "sev-high",
+        "Medium": "sev-medium",
+        "Low": "sev-low",
+    }[_warning_severity(code)]
 
 
 def _build_score(text: str, entities: Dict[str, Any], issues: List[Dict[str, str]], metadata: Dict[str, Any]) -> Dict[str, Any]:
@@ -286,6 +445,8 @@ def _build_score(text: str, entities: Dict[str, Any], issues: List[Dict[str, str
         score -= 10
     if not any(key.startswith("amount_") for key in entities):
         score -= 5
+    if metadata.get("is_encrypted"):
+        score -= 25
 
     score = max(score, 10)
 
@@ -317,35 +478,9 @@ def _build_score(text: str, entities: Dict[str, Any], issues: List[Dict[str, str
     }
 
 
-def _count_pdf_pages(file_path: Path) -> Optional[int]:
-    if not file_path.exists():
-        return None
-
-    try:
-        content = file_path.read_bytes()
-    except OSError:
-        return None
-
-    matches = re.findall(rb"/Type\s*/Page\b", content)
-    return len(matches) or None
-
-
 def _format_file_size(size_bytes: int) -> str:
     if size_bytes < 1024:
         return f"{size_bytes} B"
     if size_bytes < 1024 * 1024:
         return f"{size_bytes / 1024:.1f} KB"
     return f"{size_bytes / 1024 / 1024:.1f} MB"
-
-
-def _infer_text_source(file_path: Path, text: str) -> str:
-    extension = file_path.suffix.lower()
-    if extension in TEXT_EXTENSIONS:
-        return "text"
-    if extension == ".docx":
-        return "docx"
-    if extension == ".pdf":
-        return "pdf-placeholder" if "not enabled yet" in text.lower() else "pdf"
-    if extension in IMAGE_EXTENSIONS:
-        return "image-placeholder"
-    return "binary-placeholder"

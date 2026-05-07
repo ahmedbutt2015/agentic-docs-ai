@@ -46,12 +46,35 @@ class MetadataResponse(BaseModel):
     file_size_bytes: int
     file_size_label: str
     text_source: str
+    parser_engine: Optional[str] = None
     uploaded_at: Optional[datetime] = None
     processed_at: Optional[datetime] = None
     character_count: int
     word_count: int
     line_count: int
     page_count: Optional[int] = None
+    document_title: Optional[str] = None
+    document_author: Optional[str] = None
+    document_created_at: Optional[str] = None
+    is_encrypted: bool = False
+
+
+class WarningResponse(BaseModel):
+    code: str
+    message: str
+
+
+class PageBlockResponse(BaseModel):
+    text: str
+    bbox: Optional[List[float]] = None
+    confidence: float = 1.0
+
+
+class PageResponse(BaseModel):
+    page_number: int
+    text: str
+    sheet_name: Optional[str] = None
+    blocks: List[PageBlockResponse] = Field(default_factory=list)
 
 
 class ResultPayload(BaseModel):
@@ -60,6 +83,8 @@ class ResultPayload(BaseModel):
     metadata: MetadataResponse
     score: ScoreResponse
     issues: List[IssueResponse] = Field(default_factory=list)
+    pages: List[PageResponse] = Field(default_factory=list)
+    warnings: List[WarningResponse] = Field(default_factory=list)
 
 
 class ResultResponse(BaseModel):

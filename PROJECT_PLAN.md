@@ -9,6 +9,7 @@
 - [x] Backend offline detection and clearer upload errors in the frontend
 - [x] Mockup-faithful dashboard, upload, and results UI
 - [x] Deterministic parsing for text, HTML, and DOCX files
+- [x] Native PDF text extraction with PyMuPDF (`pdf_extractor.py`)
 
 ## Completed Frontend and Backend Work
 
@@ -21,37 +22,41 @@
 - [x] Standardize local startup and environment setup
 - [x] Lock local database direction to PostgreSQL
 
-## Next Steps You Can Build
+---
 
-### 1. OCR Implementation
+## Version 1 — In Progress
 
-- [ ] Choose the first OCR engine
-- [ ] Add PDF text extraction
-- [ ] Add image OCR for PNG/JPG/JPEG/TIFF
-- [ ] Store extracted full text in `document_jobs`
-- [ ] Return OCR confidence data in the API
-- [ ] Add page-level progress updates during OCR
+### 1. PDF Text Extraction (native, no OCR)
+
+- [x] Integrate PyMuPDF and build a per-page extractor
+- [x] Return per-page text, blocks, bounding boxes, and a unified output schema
+- [ ] Wire `pdf_extractor` into the main result pipeline (replace the PDF placeholder in `ocr.py`)
+- [ ] Extract PDF metadata (title, author, creation date, page count, encrypted flag)
+- [ ] Handle encrypted/password-protected PDFs gracefully
+- [ ] Handle corrupted, zero-byte, and oversized PDFs without crashing the worker
+- [ ] Detect pages with little or no native text and flag them for v2 OCR fallback
+- [ ] Surface per-page text in the API response so the frontend can render page-by-page
 
 ### 2. Document Parsers
 
 - [ ] Add XLSX parsing
-- [ ] Add richer PDF metadata extraction
-- [ ] Normalize parser output to one shared schema
+- [ ] Normalize all parser output (text, DOCX, PDF, XLSX) to one shared schema
 - [ ] Add parser routing by MIME type and extension
 - [ ] Add validation for unsupported or corrupted files
+- [ ] Add resource limits (timeout, max pages, max bytes) per parse job
 
 ### 3. Embeddings and Vector Store
 
-- [ ] Define document chunking rules
+- [ ] Define document chunking rules (size, overlap, page-aware boundaries)
 - [ ] Choose the embeddings model/provider
 - [ ] Choose the vector database
-- [ ] Add chunk metadata fields
+- [ ] Add chunk metadata fields (page, section, source file, hash)
 - [ ] Save chunks and embeddings after extraction
 - [ ] Add retrieval query helpers for regulations and prior documents
 
 ### 4. Agents and Orchestration
 
-- [ ] Define each agent’s responsibility and input/output schema
+- [ ] Define each agent's responsibility and input/output schema
 - [ ] Build the ingestion-to-reasoning flow
 - [ ] Add LangGraph orchestration
 - [ ] Add retry/fallback logic between agent steps
@@ -65,16 +70,23 @@
 - [ ] Add framework-level scoring logic
 - [ ] Add audit trail records for every applied rule
 
-## Suggested Build Order
+---
 
-- [ ] Start with real PDF and image OCR
-- [ ] Then normalize extraction output into one shared schema
-- [ ] Then add chunking and embeddings
-- [ ] Then plug in vector retrieval
-- [ ] Then build agent orchestration
-- [ ] Then replace the placeholder scoring/issues with real compliance logic
+## Version 2 — Deferred
 
-## Frontend and Backend Follow-Up After OCR/Agents
+### OCR for Scanned Documents and Images
+
+Deferred from v1. Native PDF extraction covers the majority of business documents; OCR is added once the rest of the pipeline is shippable. The pipeline already has a hook (`v1` PDF extractor flags low-text pages) that v2 will consume.
+
+- [ ] Choose the OCR engine (Tesseract / PaddleOCR / cloud — AWS Textract or Google Document AI)
+- [ ] Add image OCR for PNG / JPG / JPEG / TIFF uploads
+- [ ] Add OCR fallback for scanned PDF pages
+- [ ] Confidence-based routing (native → OCR → vision LLM for the messy 5%)
+- [ ] Per-block confidence scores in API output and UI
+- [ ] Page-level progress events during long OCR jobs
+- [ ] Layout-aware extraction (tables, forms, multi-column reading order)
+
+### Other Future Work
 
 - [ ] Show OCR confidence and parser source in more detail
 - [ ] Add job history filtering and search
@@ -83,8 +95,21 @@
 - [ ] Add export formats beyond plain text
 - [ ] Add API tests for the live OCR and agent flows
 
+---
+
+## Suggested Build Order
+
+1. Wire native PDF extractor into the main result pipeline
+2. Add PDF metadata + error handling for encrypted / corrupted files
+3. Normalize all parser output into one shared schema
+4. Add chunking and embeddings
+5. Plug in vector retrieval
+6. Build agent orchestration
+7. Replace placeholder scoring/issues with real compliance logic
+8. (v2) Add OCR for scanned content
+
 ## Notes
 
 - Local development is PostgreSQL-first. Do not switch the app back to SQLite.
-- The remaining major workstreams are OCR, embeddings/vector storage, agents, orchestration, and real compliance rules.
-- Keep each new step shippable and testable before moving to the next one.
+- Keep each step shippable and testable before moving to the next one.
+- OCR is intentionally deferred — v1 ships without it.
