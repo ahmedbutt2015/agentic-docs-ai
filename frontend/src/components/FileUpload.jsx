@@ -6,7 +6,7 @@ import {
   ShieldCheckIcon,
   UploadIcon,
 } from './Icons';
-import { FRAMEWORKS, PROCESSING_OPTIONS } from '../mockData';
+import { PROCESSING_OPTIONS } from '../mockData';
 
 function createRow(file, index) {
   const extension = file.name.split('.').pop()?.toLowerCase() || 'file';
@@ -33,18 +33,41 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
   const [optionState, setOptionState] = useState(
     PROCESSING_OPTIONS.reduce((accumulator, option) => ({ ...accumulator, [option.label]: option.enabled }), {}),
   );
-  const [frameworkState, setFrameworkState] = useState(
-    FRAMEWORKS.reduce((accumulator, framework) => {
-      if (framework.code) {
-        accumulator[framework.code] = Boolean(framework.active);
+  const [availableFrameworks, setAvailableFrameworks] = useState([]);
+  const [frameworkState, setFrameworkState] = useState({});
+
+  useEffect(() => {
+    if (!backendOnline) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`${apiBase}/frameworks`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (cancelled) return;
+        const list = Array.isArray(data?.frameworks) ? data.frameworks : [];
+        setAvailableFrameworks(list);
+        setFrameworkState((current) => {
+          const next = {};
+          list.forEach((name) => {
+            next[name] = current[name] !== undefined ? current[name] : true;
+          });
+          return next;
+        });
+      } catch (err) {
+        // backend probably offline; the inline warning will show
       }
-      return accumulator;
-    }, {}),
-  );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase, backendOnline]);
 
   const selectedFrameworks = Object.entries(frameworkState)
     .filter(([, isActive]) => isActive)
-    .map(([code]) => code);
+    .map(([name]) => name);
 
   const updateRow = (rowId, patch) => {
     setUploadRows((rows) => rows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
@@ -332,48 +355,42 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
             </div>
           </div>
           <div className="card-body framework-list">
-            {FRAMEWORKS.map((framework) => {
-              if (framework.readOnly || !framework.code) {
-                return (
-                  <div
-                    key={framework.name}
-                    className="framework-chip framework-chip-muted"
-                    aria-disabled="true"
-                  >
-                    <PlusIcon width={14} height={14} color="var(--text-muted)" />
-                    <span>{framework.name}</span>
-                  </div>
-                );
-              }
-
-              const isActive = Boolean(frameworkState[framework.code]);
-              return (
-                <button
-                  key={framework.name}
-                  type="button"
-                  className={`framework-chip ${isActive ? 'framework-chip-active' : 'framework-chip-muted'}`}
-                  onClick={() =>
-                    setFrameworkState((current) => ({
-                      ...current,
-                      [framework.code]: !current[framework.code],
-                    }))
-                  }
-                  aria-pressed={isActive}
-                >
-                  {isActive ? (
-                    <CheckCircleIcon width={14} height={14} color="var(--cyan-bright)" />
-                  ) : (
-                    <PlusIcon width={14} height={14} color="var(--text-muted)" />
-                  )}
-                  <span>{framework.name}</span>
-                </button>
-              );
-            })}
-            {selectedFrameworks.length === 0 ? (
+            {availableFrameworks.length === 0 ? (
               <p className="framework-hint">
-                No frameworks selected — the backend will fall back to all three for compliance scoring.
+                {backendOnline
+                  ? 'No compliance rules defined yet. Open the Rules page to add some, or restore defaults.'
+                  : 'Backend offline — frameworks will appear once the API is reachable.'}
               </p>
-            ) : null}
+            ) : (
+              <>
+                {availableFrameworks.map((name) => {
+                  const isActive = Boolean(frameworkState[name]);
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      className={`framework-chip ${isActive ? 'framework-chip-active' : 'framework-chip-muted'}`}
+                      onClick={() =>
+                        setFrameworkState((current) => ({ ...current, [name]: !current[name] }))
+                      }
+                      aria-pressed={isActive}
+                    >
+                      {isActive ? (
+                        <CheckCircleIcon width={14} height={14} color="var(--cyan-bright)" />
+                      ) : (
+                        <PlusIcon width={14} height={14} color="var(--text-muted)" />
+                      )}
+                      <span>{name}</span>
+                    </button>
+                  );
+                })}
+                {selectedFrameworks.length === 0 ? (
+                  <p className="framework-hint">
+                    No frameworks selected — the backend will evaluate every framework with at least one enabled rule.
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
       </div>

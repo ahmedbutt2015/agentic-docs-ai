@@ -151,6 +151,44 @@ class SearchResponse(BaseModel):
     hits: List[SearchHitResponse] = Field(default_factory=list)
 
 
+class RuleBase(BaseModel):
+    rule_id: str
+    framework: str
+    title: str
+    check: str
+    severity: str = "Medium"
+    is_enabled: bool = True
+
+
+class RuleCreate(RuleBase):
+    pass
+
+
+class RuleUpdate(BaseModel):
+    rule_id: Optional[str] = None
+    framework: Optional[str] = None
+    title: Optional[str] = None
+    check: Optional[str] = None
+    severity: Optional[str] = None
+    is_enabled: Optional[bool] = None
+
+
+class RuleResponse(RuleBase):
+    id: int
+    is_default: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class RuleRestoreResponse(BaseModel):
+    restored: int
+    rules: List[RuleResponse] = Field(default_factory=list)
+
+
+class FrameworksResponse(BaseModel):
+    frameworks: List[str] = Field(default_factory=list)
+
+
 class DashboardResponse(BaseModel):
     total_jobs: int
     completed_jobs: int

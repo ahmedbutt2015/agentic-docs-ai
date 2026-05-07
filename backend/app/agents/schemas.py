@@ -5,12 +5,11 @@ from pydantic import BaseModel, Field
 
 SeverityLiteral = Literal["High", "Medium", "Low"]
 StatusLiteral = Literal["pass", "warn", "fail"]
-FrameworkLiteral = Literal["GDPR", "SOC2", "ISO27001"]
 
 
 class Finding(BaseModel):
     rule_id: str
-    framework: FrameworkLiteral
+    framework: str
     status: StatusLiteral
     severity: SeverityLiteral
     explanation: str
@@ -22,7 +21,7 @@ class FindingsBatch(BaseModel):
 
 
 class FrameworkSummary(BaseModel):
-    framework: FrameworkLiteral
+    framework: str
     rules_evaluated: int
     passed: int
     warned: int

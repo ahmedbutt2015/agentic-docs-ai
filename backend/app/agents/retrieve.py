@@ -1,20 +1,28 @@
+from collections import Counter
 from typing import Any, Dict
 
-from app.agents.rules import DEFAULT_FRAMEWORKS, rules_for_frameworks
 from app.agents.state import ComplianceState
+from app.database import SessionLocal
 from app.services import pipeline_log
+from app.services.rules_service import list_distinct_frameworks, list_rules_for_frameworks
 
 
 def retrieve_node(state: ComplianceState) -> Dict[str, Any]:
-    active = state.get("active_frameworks") or DEFAULT_FRAMEWORKS
-    rules = rules_for_frameworks(active)
+    requested = state.get("active_frameworks") or []
 
-    pipeline_log.section("AGENT.RETRIEVE", frameworks=",".join(active))
+    db = SessionLocal()
+    try:
+        active = list(requested) if requested else list_distinct_frameworks(db)
+        rules = list_rules_for_frameworks(db, active) if active else []
+    finally:
+        db.close()
+
+    by_framework = Counter(rule["framework"] for rule in rules)
+
+    pipeline_log.section("AGENT.RETRIEVE", frameworks=",".join(active) if active else "(none)")
     pipeline_log.kv(
         rules_loaded=len(rules),
-        gdpr=sum(1 for r in rules if r["framework"] == "GDPR"),
-        soc2=sum(1 for r in rules if r["framework"] == "SOC2"),
-        iso=sum(1 for r in rules if r["framework"] == "ISO27001"),
+        per_framework=", ".join(f"{name}:{count}" for name, count in sorted(by_framework.items())) or "none",
     )
 
     return {"applicable_rules": rules, "active_frameworks": list(active)}

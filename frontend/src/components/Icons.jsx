@@ -209,3 +209,46 @@ export function PlusIcon(props) {
     </BaseIcon>
   );
 }
+
+export function EditIcon(props) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </BaseIcon>
+  );
+}
+
+export function TrashIcon(props) {
+  return (
+    <BaseIcon {...props}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </BaseIcon>
+  );
+}
+
+export function RotateCounterClockwiseIcon(props) {
+  return (
+    <BaseIcon {...props}>
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </BaseIcon>
+  );
+}
+
+export function ListIcon(props) {
+  return (
+    <BaseIcon {...props}>
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
+    </BaseIcon>
+  );
+}

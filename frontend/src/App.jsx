@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import FileUpload from './components/FileUpload';
 import ResultDisplay from './components/ResultDisplay';
+import Rules from './components/Rules';
 import {
   ActivityPulseIcon,
   AlertCircleIcon,
@@ -14,6 +15,7 @@ import {
   PlayIcon,
   PulseLineIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   TeamIcon,
   UploadIcon,
 } from './components/Icons';
@@ -310,6 +312,7 @@ function App() {
   const navItems = [
     { key: 'dashboard', label: 'Dashboard', icon: <AppGridIcon /> },
     { key: 'upload', label: 'Ingest', icon: <UploadIcon /> },
+    { key: 'rules', label: 'Rules', icon: <ShieldCheckIcon /> },
     { key: 'results', label: 'Results', icon: <FileTextIcon /> },
   ];
 
@@ -319,6 +322,7 @@ function App() {
       items: [
         { key: 'dashboard', label: 'Overview', icon: <AppGridIcon /> },
         { key: 'upload', label: 'Document Ingest', icon: <UploadIcon /> },
+        { key: 'rules', label: 'Compliance Rules', icon: <ShieldCheckIcon /> },
         { key: 'results', label: 'Results', icon: <FileTextIcon />, badge: '3' },
       ],
     },
@@ -692,6 +696,16 @@ function App() {
                 onDemoComplete={handleDemoComplete}
                 onToast={pushToast}
                 onUploadSuccess={handleUploadSuccess}
+              />
+            </section>
+          ) : null}
+
+          {section === 'rules' ? (
+            <section id="section-rules">
+              <Rules
+                apiBase={API_BASE}
+                backendOnline={backendStatus === 'online'}
+                onToast={pushToast}
               />
             </section>
           ) : null}

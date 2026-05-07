@@ -4,7 +4,6 @@ from langgraph.graph import END, StateGraph
 
 from app.agents.reason import reason_node
 from app.agents.retrieve import retrieve_node
-from app.agents.rules import DEFAULT_FRAMEWORKS
 from app.agents.schemas import ComplianceReport
 from app.agents.score import score_node
 from app.agents.state import ComplianceState
@@ -43,7 +42,7 @@ def run_compliance_graph(
         "job_id": job_id,
         "doc_filename": doc_filename,
         "doc_text": doc_text,
-        "active_frameworks": active_frameworks or list(DEFAULT_FRAMEWORKS),
+        "active_frameworks": list(active_frameworks) if active_frameworks else [],
         "llm_provider": provider,
         "llm_model": model,
         "errors": [],

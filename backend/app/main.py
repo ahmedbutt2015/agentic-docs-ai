@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.agents.graph import run_compliance_graph
-from app.agents.rules import DEFAULT_FRAMEWORKS
 from app.config import (
     ANTHROPIC_MODEL,
     EMBEDDING_MODEL,
@@ -19,12 +18,17 @@ from app.config import (
     UPLOAD_DIR,
 )
 from app.database import SessionLocal, init_db
-from app.models import DocumentJob
+from app.models import ComplianceRule, DocumentJob
 from app.schemas import (
     ComplianceReportResponse,
     DashboardResponse,
+    FrameworksResponse,
     RecentJobResponse,
     ResultResponse,
+    RuleCreate,
+    RuleResponse,
+    RuleRestoreResponse,
+    RuleUpdate,
     SearchHitResponse,
     SearchResponse,
     StatusResponse,
@@ -33,6 +37,15 @@ from app.schemas import (
 from app.services import embedder, pipeline_log, vector_store
 from app.services.chunker import chunk_extraction
 from app.services.ocr import build_result_payload, extract_document_data, run_extraction
+from app.services.rules_service import (
+    create_rule,
+    delete_rule,
+    get_rule,
+    list_distinct_frameworks,
+    list_rules,
+    restore_missing_defaults,
+    update_rule,
+)
 
 app = FastAPI(
     title="Regulus AI Backend",
@@ -61,16 +74,13 @@ def startup_event() -> None:
     init_db()
 
 
-SUPPORTED_FRAMEWORKS = {framework.upper() for framework in DEFAULT_FRAMEWORKS}
-
-
 def _parse_frameworks(raw: Optional[str]) -> Optional[List[str]]:
     if not raw:
         return None
-    selected = []
+    selected: List[str] = []
     for token in raw.split(","):
-        cleaned = token.strip().upper()
-        if cleaned and cleaned in SUPPORTED_FRAMEWORKS and cleaned not in selected:
+        cleaned = token.strip()
+        if cleaned and cleaned not in selected:
             selected.append(cleaned)
     return selected or None
 
@@ -196,8 +206,6 @@ def process_document(
         compliance_summary = "skipped"
         try:
             active_model = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else LLM_MODEL
-            frameworks_for_run = active_frameworks or list(DEFAULT_FRAMEWORKS)
-            pipeline_log.line(f"frameworks for this run: {','.join(frameworks_for_run)}")
             with pipeline_log.timed() as timer:
                 report = run_compliance_graph(
                     job_id=job_id,
@@ -205,7 +213,7 @@ def process_document(
                     doc_text=result["text"],
                     provider=LLM_PROVIDER,
                     model=active_model,
-                    active_frameworks=frameworks_for_run,
+                    active_frameworks=active_frameworks,
                 )
             if report is not None:
                 job.result_compliance = report.model_dump()
@@ -320,6 +328,63 @@ def get_result(job_id: str, db: Session = Depends(get_db)) -> ResultResponse:
         updated_at=job.updated_at,
         result=result_data,
     )
+
+
+@app.get("/rules", response_model=List[RuleResponse])
+def get_rules(
+    framework: Optional[str] = Query(None, description="Filter by framework"),
+    enabled_only: bool = Query(False),
+    db: Session = Depends(get_db),
+) -> List[RuleResponse]:
+    rules = list_rules(db, framework=framework, enabled_only=enabled_only)
+    return [RuleResponse.model_validate(rule, from_attributes=True) for rule in rules]
+
+
+@app.post("/rules", response_model=RuleResponse, status_code=201)
+def post_rule(payload: RuleCreate, db: Session = Depends(get_db)) -> RuleResponse:
+    existing = db.query(ComplianceRule).filter(ComplianceRule.rule_id == payload.rule_id.strip()).first()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail=f"Rule with id '{payload.rule_id}' already exists.")
+    rule = create_rule(db, payload.model_dump())
+    return RuleResponse.model_validate(rule, from_attributes=True)
+
+
+@app.put("/rules/{rule_pk}", response_model=RuleResponse)
+def put_rule(rule_pk: int, payload: RuleUpdate, db: Session = Depends(get_db)) -> RuleResponse:
+    rule = get_rule(db, rule_pk)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    new_rule_id = payload.rule_id.strip() if payload.rule_id is not None else None
+    if new_rule_id and new_rule_id != rule.rule_id:
+        clash = db.query(ComplianceRule).filter(ComplianceRule.rule_id == new_rule_id).first()
+        if clash is not None:
+            raise HTTPException(status_code=409, detail=f"Rule with id '{new_rule_id}' already exists.")
+
+    updated = update_rule(db, rule, payload.model_dump(exclude_unset=True))
+    return RuleResponse.model_validate(updated, from_attributes=True)
+
+
+@app.delete("/rules/{rule_pk}", status_code=204)
+def remove_rule(rule_pk: int, db: Session = Depends(get_db)) -> None:
+    rule = get_rule(db, rule_pk)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    delete_rule(db, rule)
+
+
+@app.post("/rules/restore-defaults", response_model=RuleRestoreResponse)
+def post_restore_defaults(db: Session = Depends(get_db)) -> RuleRestoreResponse:
+    restored = restore_missing_defaults(db)
+    return RuleRestoreResponse(
+        restored=len(restored),
+        rules=[RuleResponse.model_validate(rule, from_attributes=True) for rule in restored],
+    )
+
+
+@app.get("/frameworks", response_model=FrameworksResponse)
+def get_frameworks(db: Session = Depends(get_db)) -> FrameworksResponse:
+    return FrameworksResponse(frameworks=list_distinct_frameworks(db))
 
 
 @app.get("/search", response_model=SearchResponse)

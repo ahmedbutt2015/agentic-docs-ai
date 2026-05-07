@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import relationship
 
 from app.config import EMBEDDING_DIMENSIONS
@@ -45,3 +45,18 @@ class DocumentChunk(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     job = relationship("DocumentJob", back_populates="chunks")
+
+
+class ComplianceRule(Base):
+    __tablename__ = "compliance_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    rule_id = Column(String, nullable=False, unique=True, index=True)
+    framework = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False)
+    check = Column(Text, nullable=False)
+    severity = Column(String, nullable=False, default="Medium")
+    is_default = Column(Boolean, nullable=False, default=False)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
