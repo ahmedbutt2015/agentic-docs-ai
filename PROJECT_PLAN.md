@@ -47,10 +47,10 @@
 
 ### 3. Embeddings and Vector Store
 
-- [ ] Define document chunking rules (size, overlap, page-aware boundaries)
+- [x] Define document chunking rules (size, overlap, page-aware boundaries) — page-anchored recursive splitter, 512 target / 64 overlap, tiktoken (cl100k_base)
+- [x] Add chunk metadata fields (page, source file, char offsets, chunk index)
 - [ ] Choose the embeddings model/provider
 - [ ] Choose the vector database
-- [ ] Add chunk metadata fields (page, section, source file, hash)
 - [ ] Save chunks and embeddings after extraction
 - [ ] Add retrieval query helpers for regulations and prior documents
 
