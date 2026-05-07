@@ -135,10 +135,29 @@ function buildHighlightedContent(text, entities) {
   return nodes;
 }
 
+const STATUS_BADGE_CLASS = {
+  pass: 'badge-green',
+  warn: 'badge-amber',
+  fail: 'badge-red',
+};
+
+const STATUS_LABEL = {
+  pass: 'PASS',
+  warn: 'WARN',
+  fail: 'FAIL',
+};
+
+function severityClassFor(severity) {
+  if (severity === 'High') return 'sev-high';
+  if (severity === 'Medium') return 'sev-medium';
+  return 'sev-low';
+}
+
 function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
   const [openSections, setOpenSections] = useState({
     text: true,
     issues: true,
+    compliance: true,
   });
 
   const entities = useMemo(() => {
@@ -164,6 +183,14 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
   const issues = result?.issues || [];
   const frameworks = result?.score?.frameworks || [];
   const metadata = result?.metadata || {};
+
+  const compliance = result?.compliance || null;
+  const complianceScore = compliance?.score ?? null;
+  const complianceOffset = complianceScore == null
+    ? scoreCircumference
+    : scoreCircumference - (scoreCircumference * complianceScore) / 100;
+  const complianceFindings = compliance?.findings || [];
+  const complianceFrameworkSummaries = compliance?.frameworks || [];
 
   const toggleSection = (sectionKey) => {
     setOpenSections((sections) => ({
@@ -249,9 +276,143 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
               </table>
             </div>
           </div>
+
+          <div className="card collapsible">
+            <button
+              className={`collapsible-toggle ${openSections.compliance ? 'open' : ''}`}
+              type="button"
+              onClick={() => toggleSection('compliance')}
+            >
+              <span className="collapsible-title">
+                <ShieldCheckIcon color="var(--cyan-bright)" />
+                Compliance Findings
+                <span className="badge badge-blue">{complianceFindings.length} evaluated</span>
+              </span>
+              <ChevronDownIcon className="chevron" />
+            </button>
+            <div className={`collapsible-body ${openSections.compliance ? 'open' : ''}`}>
+              <table className="issues-table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Severity</th>
+                    <th>Rule</th>
+                    <th>Framework</th>
+                    <th>Explanation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {complianceFindings.map((finding) => (
+                    <tr key={`${finding.rule_id}-${finding.framework}`}>
+                      <td>
+                        <span className={`badge ${STATUS_BADGE_CLASS[finding.status] || 'badge-muted'}`}>
+                          {STATUS_LABEL[finding.status] || finding.status?.toUpperCase() || '—'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`severity-dot ${severityClassFor(finding.severity)}`}>
+                          {finding.severity}
+                        </span>
+                      </td>
+                      <td>
+                        <code className="rule-code">{finding.rule_id}</code>
+                      </td>
+                      <td>
+                        <span className="framework-chip framework-chip-active">
+                          <span>{finding.framework}</span>
+                        </span>
+                      </td>
+                      <td className="issue-description">
+                        {finding.explanation}
+                        {finding.evidence && finding.evidence !== 'not present' ? (
+                          <div className="finding-evidence">"{finding.evidence}"</div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                  {!complianceFindings.length ? (
+                    <tr>
+                      <td colSpan="5" className="issue-description empty-table-cell">
+                        {compliance
+                          ? 'The compliance agent ran but produced no findings.'
+                          : 'Compliance analysis is not available for this document yet.'}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <div className="results-right">
+          {compliance ? (
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title">
+                  <ShieldCheckIcon color="var(--green-bright)" />
+                  Compliance Score
+                </div>
+              </div>
+              <div className="compliance-score-ring">
+                <div className="score-ring-wrap">
+                  <svg width="90" height="90" viewBox="0 0 90 90">
+                    <circle cx="45" cy="45" r="38" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
+                    <circle
+                      cx="45"
+                      cy="45"
+                      r="38"
+                      fill="none"
+                      stroke="url(#complianceScoreGrad)"
+                      strokeWidth="8"
+                      strokeDasharray={scoreCircumference}
+                      strokeDashoffset={complianceOffset}
+                      strokeLinecap="round"
+                    />
+                    <defs>
+                      <linearGradient id="complianceScoreGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#10b981" />
+                        <stop offset="100%" stopColor="#34d399" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="score-text">
+                    <div className="score-num" style={{ color: 'var(--green-bright)' }}>
+                      {complianceScore ?? 0}
+                    </div>
+                    <div className="score-pct">/ 100</div>
+                  </div>
+                </div>
+
+                <div className="score-info">
+                  <div className="score-label">{compliance.label}</div>
+                  <div className="score-sub">{compliance.summary}</div>
+                  <div className="score-badges">
+                    {complianceFrameworkSummaries.map((summary) => (
+                      <span
+                        key={summary.framework}
+                        className={`badge ${
+                          summary.failed > 0
+                            ? 'badge-red'
+                            : summary.warned > 0
+                              ? 'badge-amber'
+                              : 'badge-green'
+                        }`}
+                        title={`${summary.passed} pass · ${summary.warned} warn · ${summary.failed} fail`}
+                      >
+                        {summary.framework} · {summary.passed}✓ {summary.warned}⚠ {summary.failed}✗
+                      </span>
+                    ))}
+                  </div>
+                  <div className="finding-llm-line">
+                    via {compliance.llm_provider}
+                    {compliance.llm_model ? ` · ${compliance.llm_model}` : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="card">
             <div className="card-header">
               <div className="card-title">
