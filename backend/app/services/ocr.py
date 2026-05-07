@@ -42,8 +42,10 @@ def extract_document_data(
     filename: Optional[str] = None,
     uploaded_at: Optional[datetime] = None,
     processed_at: Optional[datetime] = None,
+    extraction: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    extraction = run_extraction(file_path)
+    if extraction is None:
+        extraction = run_extraction(file_path)
     text = extraction["full_text"]
     entities = _extract_entities(text)
     metadata = _build_metadata(

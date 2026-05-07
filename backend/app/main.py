@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
-from app.config import UPLOAD_DIR
+from app.config import EMBEDDING_MODEL, UPLOAD_DIR
 from app.database import SessionLocal, init_db
 from app.models import DocumentJob
 from app.schemas import (
@@ -19,7 +19,7 @@ from app.schemas import (
     StatusResponse,
     UploadResponse,
 )
-from app.services import embedder, vector_store
+from app.services import embedder, pipeline_log, vector_store
 from app.services.chunker import chunk_extraction
 from app.services.ocr import build_result_payload, extract_document_data, run_extraction
 
@@ -57,12 +57,50 @@ def process_document(job_id: str, file_path: Path) -> None:
         if job is None:
             return
 
+        size_kb = file_path.stat().st_size / 1024 if file_path.exists() else 0
+        pipeline_log.section(
+            "UPLOAD",
+            job_id=job_id[:8],
+            file=job.filename,
+            size_kb=f"{size_kb:.1f}",
+        )
+
         job.status = "processing"
         job.message = "Extracting document text and metadata"
         db.commit()
 
-        time.sleep(1)
-        result = extract_document_data(file_path, filename=job.filename, uploaded_at=job.created_at)
+        with pipeline_log.timed() as timer:
+            extraction = run_extraction(file_path)
+        meta = extraction["meta"]
+        pipeline_log.section(
+            "EXTRACT",
+            engine=meta.get("engine"),
+            source=meta.get("source"),
+            time=timer.fmt(),
+        )
+        pipeline_log.kv(
+            pages=meta.get("page_count"),
+            title=repr(meta.get("title")),
+            author=repr(meta.get("author")),
+            encrypted=meta.get("is_encrypted"),
+            characters=len(extraction["full_text"]),
+            warnings=[w["code"] for w in extraction["warnings"]] or "none",
+        )
+
+        with pipeline_log.timed() as timer:
+            result = extract_document_data(
+                file_path,
+                filename=job.filename,
+                uploaded_at=job.created_at,
+                extraction=extraction,
+            )
+        pipeline_log.section("ANALYZE", time=timer.fmt())
+        pipeline_log.kv(
+            entities_found=len(result["entities"]),
+            issues=len(result["issues"]),
+            score=result["score"]["value"],
+            label=result["score"]["label"],
+        )
 
         job.result_text = result["text"]
         job.result_entities = result["entities"]
@@ -71,16 +109,53 @@ def process_document(job_id: str, file_path: Path) -> None:
 
         chunks_indexed = 0
         try:
-            extraction = run_extraction(file_path)
-            chunks = chunk_extraction(
-                extraction,
-                doc_id=job_id,
-                source_filename=job.filename,
+            with pipeline_log.timed() as timer:
+                chunks = chunk_extraction(
+                    extraction,
+                    doc_id=job_id,
+                    source_filename=job.filename,
+                )
+            pipeline_log.section(
+                "CHUNK",
+                target_tokens=512,
+                overlap_tokens=64,
+                tokenizer="cl100k_base",
+                time=timer.fmt(),
             )
+            for chunk in chunks:
+                pipeline_log.line(
+                    f"chunk {chunk['chunk_index']:>2}: page={chunk['page_number']} "
+                    f"tokens={chunk['token_count']:>3} chars={chunk['char_start']}-{chunk['char_end']}"
+                )
+            total_tokens = sum(c["token_count"] for c in chunks)
+            pipeline_log.line(f"→ total: {len(chunks)} chunks, {total_tokens} tokens")
+
             if chunks:
-                embeddings = embedder.embed_texts([chunk["text"] for chunk in chunks])
-                chunks_indexed = vector_store.replace_chunks_for_job(db, job_id, chunks, embeddings)
+                with pipeline_log.timed() as timer:
+                    embeddings = embedder.embed_texts([chunk["text"] for chunk in chunks])
+                pipeline_log.section(
+                    "EMBED",
+                    model=EMBEDDING_MODEL,
+                    dim=len(embeddings[0]),
+                    time=timer.fmt(),
+                )
+                for index, vector in enumerate(embeddings):
+                    preview = "[" + ", ".join(f"{v:+.3f}" for v in vector[:5]) + ", ...]"
+                    pipeline_log.line(f"chunk {index:>2}: {preview}")
+
+                with pipeline_log.timed() as timer:
+                    chunks_indexed = vector_store.replace_chunks_for_job(
+                        db, job_id, chunks, embeddings
+                    )
+                pipeline_log.section("DB", table="document_chunks", time=timer.fmt())
+                pipeline_log.kv(
+                    upserted=chunks_indexed,
+                    embedding_column=f"Vector({len(embeddings[0])})",
+                    operation="cascade-replace",
+                )
         except Exception as exc:
+            pipeline_log.section("ERROR", phase="embed_or_store", error=exc.__class__.__name__)
+            pipeline_log.line(str(exc))
             job.status = "completed"
             job.message = f"Document data is ready (embedding skipped: {exc.__class__.__name__})"
             db.commit()
@@ -92,6 +167,9 @@ def process_document(job_id: str, file_path: Path) -> None:
         else:
             job.message = "Document data is ready (no chunks to index)"
         db.commit()
+
+        pipeline_log.section("DONE", job_id=job_id[:8], status=job.status)
+        pipeline_log.line(job.message)
     finally:
         db.close()
 
@@ -177,8 +255,21 @@ def search_chunks(
     job_id: str = Query(None, description="Optional: restrict search to one document"),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
-    query_embedding = embedder.embed_text(q)
-    hits = vector_store.search_similar_chunks(db, query_embedding, limit=limit, job_id=job_id)
+    pipeline_log.section("SEARCH", query=repr(q), limit=limit, job_id=job_id or "all")
+
+    with pipeline_log.timed() as timer:
+        query_embedding = embedder.embed_text(q)
+    pipeline_log.line(f"query embedding: dim={len(query_embedding)}  time={timer.fmt()}")
+
+    with pipeline_log.timed() as timer:
+        hits = vector_store.search_similar_chunks(db, query_embedding, limit=limit, job_id=job_id)
+    pipeline_log.line(f"hits: {len(hits)}  time={timer.fmt()}")
+    for hit in hits:
+        preview = hit["text"][:80].replace("\n", " ")
+        pipeline_log.line(
+            f"  score={hit['score']:.3f}  page={hit['page_number']}  preview={preview!r}"
+        )
+
     return SearchResponse(
         query=q,
         hits=[
