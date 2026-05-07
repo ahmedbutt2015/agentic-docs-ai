@@ -163,10 +163,10 @@ export const PROCESSING_OPTIONS = [
 ];
 
 export const FRAMEWORKS = [
-  { name: 'GDPR (EU 2016/679)', active: true },
-  { name: 'SOC 2 Type II', active: true },
-  { name: 'ISO 27001', active: true },
-  { name: 'Add framework…', active: false },
+  { name: 'GDPR (EU 2016/679)', code: 'GDPR', active: true },
+  { name: 'SOC 2 Type II', code: 'SOC2', active: true },
+  { name: 'ISO 27001', code: 'ISO27001', active: true },
+  { name: 'Add framework…', code: null, active: false, readOnly: true },
 ];
 
 export const COMPLIANCE_ISSUES = [

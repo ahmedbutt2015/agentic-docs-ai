@@ -2,7 +2,9 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Query
+from typing import List, Optional
+
+from fastapi import Depends, FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -59,7 +61,25 @@ def startup_event() -> None:
     init_db()
 
 
-def process_document(job_id: str, file_path: Path) -> None:
+SUPPORTED_FRAMEWORKS = {framework.upper() for framework in DEFAULT_FRAMEWORKS}
+
+
+def _parse_frameworks(raw: Optional[str]) -> Optional[List[str]]:
+    if not raw:
+        return None
+    selected = []
+    for token in raw.split(","):
+        cleaned = token.strip().upper()
+        if cleaned and cleaned in SUPPORTED_FRAMEWORKS and cleaned not in selected:
+            selected.append(cleaned)
+    return selected or None
+
+
+def process_document(
+    job_id: str,
+    file_path: Path,
+    active_frameworks: Optional[List[str]] = None,
+) -> None:
     db = SessionLocal()
     try:
         job = db.get(DocumentJob, job_id)
@@ -176,6 +196,8 @@ def process_document(job_id: str, file_path: Path) -> None:
         compliance_summary = "skipped"
         try:
             active_model = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else LLM_MODEL
+            frameworks_for_run = active_frameworks or list(DEFAULT_FRAMEWORKS)
+            pipeline_log.line(f"frameworks for this run: {','.join(frameworks_for_run)}")
             with pipeline_log.timed() as timer:
                 report = run_compliance_graph(
                     job_id=job_id,
@@ -183,7 +205,7 @@ def process_document(job_id: str, file_path: Path) -> None:
                     doc_text=result["text"],
                     provider=LLM_PROVIDER,
                     model=active_model,
-                    active_frameworks=list(DEFAULT_FRAMEWORKS),
+                    active_frameworks=frameworks_for_run,
                 )
             if report is not None:
                 job.result_compliance = report.model_dump()
@@ -228,6 +250,7 @@ def health_check() -> dict:
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    frameworks: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
     job_id = str(uuid4())
@@ -246,7 +269,8 @@ async def upload_document(
     db.commit()
     db.refresh(job)
 
-    background_tasks.add_task(process_document, job_id, target_path)
+    selected_frameworks = _parse_frameworks(frameworks)
+    background_tasks.add_task(process_document, job_id, target_path, selected_frameworks)
     return UploadResponse(id=job_id, status="pending", filename=file.filename)
 
 

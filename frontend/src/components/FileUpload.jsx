@@ -33,6 +33,18 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
   const [optionState, setOptionState] = useState(
     PROCESSING_OPTIONS.reduce((accumulator, option) => ({ ...accumulator, [option.label]: option.enabled }), {}),
   );
+  const [frameworkState, setFrameworkState] = useState(
+    FRAMEWORKS.reduce((accumulator, framework) => {
+      if (framework.code) {
+        accumulator[framework.code] = Boolean(framework.active);
+      }
+      return accumulator;
+    }, {}),
+  );
+
+  const selectedFrameworks = Object.entries(frameworkState)
+    .filter(([, isActive]) => isActive)
+    .map(([code]) => code);
 
   const updateRow = (rowId, patch) => {
     setUploadRows((rows) => rows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
@@ -78,6 +90,9 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
     try {
       const formData = new FormData();
       formData.append('file', row.file);
+      if (selectedFrameworks.length) {
+        formData.append('frameworks', selectedFrameworks.join(','));
+      }
 
       const response = await fetch(`${apiBase}/upload`, {
         method: 'POST',
@@ -317,19 +332,48 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
             </div>
           </div>
           <div className="card-body framework-list">
-            {FRAMEWORKS.map((framework) => (
-              <div
-                key={framework.name}
-                className={`framework-chip ${framework.active ? 'framework-chip-active' : 'framework-chip-muted'}`}
-              >
-                {framework.active ? (
-                  <CheckCircleIcon width={14} height={14} color="var(--cyan-bright)" />
-                ) : (
-                  <PlusIcon width={14} height={14} color="var(--text-muted)" />
-                )}
-                <span>{framework.name}</span>
-              </div>
-            ))}
+            {FRAMEWORKS.map((framework) => {
+              if (framework.readOnly || !framework.code) {
+                return (
+                  <div
+                    key={framework.name}
+                    className="framework-chip framework-chip-muted"
+                    aria-disabled="true"
+                  >
+                    <PlusIcon width={14} height={14} color="var(--text-muted)" />
+                    <span>{framework.name}</span>
+                  </div>
+                );
+              }
+
+              const isActive = Boolean(frameworkState[framework.code]);
+              return (
+                <button
+                  key={framework.name}
+                  type="button"
+                  className={`framework-chip ${isActive ? 'framework-chip-active' : 'framework-chip-muted'}`}
+                  onClick={() =>
+                    setFrameworkState((current) => ({
+                      ...current,
+                      [framework.code]: !current[framework.code],
+                    }))
+                  }
+                  aria-pressed={isActive}
+                >
+                  {isActive ? (
+                    <CheckCircleIcon width={14} height={14} color="var(--cyan-bright)" />
+                  ) : (
+                    <PlusIcon width={14} height={14} color="var(--text-muted)" />
+                  )}
+                  <span>{framework.name}</span>
+                </button>
+              );
+            })}
+            {selectedFrameworks.length === 0 ? (
+              <p className="framework-hint">
+                No frameworks selected — the backend will fall back to all three for compliance scoring.
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
