@@ -17,3 +17,7 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     f"postgresql+psycopg2://{DB_USER}@{DB_HOST}:{DB_PORT}/{DB_NAME}",
 )
+
+HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "384"))

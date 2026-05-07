@@ -2,7 +2,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi import Depends, FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -10,8 +10,18 @@ from sqlalchemy import desc
 from app.config import UPLOAD_DIR
 from app.database import SessionLocal, init_db
 from app.models import DocumentJob
-from app.schemas import DashboardResponse, RecentJobResponse, ResultResponse, StatusResponse, UploadResponse
-from app.services.ocr import build_result_payload, extract_document_data
+from app.schemas import (
+    DashboardResponse,
+    RecentJobResponse,
+    ResultResponse,
+    SearchHitResponse,
+    SearchResponse,
+    StatusResponse,
+    UploadResponse,
+)
+from app.services import embedder, vector_store
+from app.services.chunker import chunk_extraction
+from app.services.ocr import build_result_payload, extract_document_data, run_extraction
 
 app = FastAPI(
     title="Regulus AI Backend",
@@ -56,8 +66,31 @@ def process_document(job_id: str, file_path: Path) -> None:
 
         job.result_text = result["text"]
         job.result_entities = result["entities"]
+        job.message = "Chunking and embedding document"
+        db.commit()
+
+        chunks_indexed = 0
+        try:
+            extraction = run_extraction(file_path)
+            chunks = chunk_extraction(
+                extraction,
+                doc_id=job_id,
+                source_filename=job.filename,
+            )
+            if chunks:
+                embeddings = embedder.embed_texts([chunk["text"] for chunk in chunks])
+                chunks_indexed = vector_store.replace_chunks_for_job(db, job_id, chunks, embeddings)
+        except Exception as exc:
+            job.status = "completed"
+            job.message = f"Document data is ready (embedding skipped: {exc.__class__.__name__})"
+            db.commit()
+            return
+
         job.status = "completed"
-        job.message = "Document data is ready"
+        if chunks_indexed:
+            job.message = f"Document data is ready ({chunks_indexed} chunks indexed)"
+        else:
+            job.message = "Document data is ready (no chunks to index)"
         db.commit()
     finally:
         db.close()
@@ -134,6 +167,32 @@ def get_result(job_id: str, db: Session = Depends(get_db)) -> ResultResponse:
         created_at=job.created_at,
         updated_at=job.updated_at,
         result=result_data,
+    )
+
+
+@app.get("/search", response_model=SearchResponse)
+def search_chunks(
+    q: str = Query(..., min_length=1, description="Free-text query"),
+    limit: int = Query(5, ge=1, le=50),
+    job_id: str = Query(None, description="Optional: restrict search to one document"),
+    db: Session = Depends(get_db),
+) -> SearchResponse:
+    query_embedding = embedder.embed_text(q)
+    hits = vector_store.search_similar_chunks(db, query_embedding, limit=limit, job_id=job_id)
+    return SearchResponse(
+        query=q,
+        hits=[
+            SearchHitResponse(
+                chunk_id=hit["chunk_id"],
+                job_id=hit["job_id"],
+                page_number=hit["page_number"],
+                chunk_index=hit["chunk_index"],
+                text=hit["text"],
+                source_filename=hit["source_filename"],
+                score=hit["score"],
+            )
+            for hit in hits
+        ],
     )
 
 

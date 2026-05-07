@@ -49,10 +49,10 @@
 
 - [x] Define document chunking rules (size, overlap, page-aware boundaries) — page-anchored recursive splitter, 512 target / 64 overlap, tiktoken (cl100k_base)
 - [x] Add chunk metadata fields (page, source file, char offsets, chunk index)
-- [ ] Choose the embeddings model/provider
-- [ ] Choose the vector database
-- [ ] Save chunks and embeddings after extraction
-- [ ] Add retrieval query helpers for regulations and prior documents
+- [x] Choose the embeddings model/provider — BAAI/bge-small-en-v1.5 via Hugging Face Inference API (384-dim, free tier)
+- [x] Choose the vector database — pgvector (extension on existing Postgres)
+- [x] Save chunks and embeddings after extraction
+- [x] Add retrieval query helpers for regulations and prior documents — `/search` endpoint with cosine similarity, optional per-job scope
 
 ### 4. Agents and Orchestration
 

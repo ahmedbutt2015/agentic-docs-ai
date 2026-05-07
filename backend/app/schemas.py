@@ -108,6 +108,21 @@ class RecentJobResponse(BaseModel):
     issue_count: int = 0
 
 
+class SearchHitResponse(BaseModel):
+    chunk_id: str
+    job_id: str
+    page_number: int
+    chunk_index: int
+    text: str
+    source_filename: Optional[str] = None
+    score: float
+
+
+class SearchResponse(BaseModel):
+    query: str
+    hits: List[SearchHitResponse] = Field(default_factory=list)
+
+
 class DashboardResponse(BaseModel):
     total_jobs: int
     completed_jobs: int

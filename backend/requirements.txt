@@ -10,3 +10,5 @@ pypdf
 PyMuPDF
 openpyxl
 tiktoken
+huggingface_hub
+pgvector
