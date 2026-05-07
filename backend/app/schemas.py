@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel
 from pydantic import Field
@@ -187,6 +187,41 @@ class RuleRestoreResponse(BaseModel):
 
 class FrameworksResponse(BaseModel):
     frameworks: List[str] = Field(default_factory=list)
+
+
+class JobSummaryResponse(BaseModel):
+    id: str
+    filename: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    job_id: Optional[str] = None
+    history: List[ChatTurn] = Field(default_factory=list)
+    limit: int = Field(6, ge=1, le=20)
+
+
+class ChatCitationResponse(BaseModel):
+    chunk_id: str
+    job_id: str
+    page_number: int
+    chunk_index: int
+    source_filename: Optional[str] = None
+    preview: str
+    score: float
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    citations: List[ChatCitationResponse] = Field(default_factory=list)
 
 
 class DashboardResponse(BaseModel):

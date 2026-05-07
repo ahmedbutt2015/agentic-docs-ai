@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Chat from './components/Chat';
 import FileUpload from './components/FileUpload';
 import ResultDisplay from './components/ResultDisplay';
 import Rules from './components/Rules';
@@ -12,6 +13,7 @@ import {
   DocumentIcon,
   FileTextIcon,
   LogoSparkIcon,
+  MessageCircleIcon,
   PlayIcon,
   PulseLineIcon,
   SettingsIcon,
@@ -94,6 +96,19 @@ function App() {
   const [logLines, setLogLines] = useState(INITIAL_LOGS);
   const [dashboard, setDashboard] = useState(null);
   const [backendStatus, setBackendStatus] = useState('checking');
+  const [chatPreselectedJobId, setChatPreselectedJobId] = useState(null);
+
+  const handleOpenChatForDocument = useCallback(
+    (targetJobId) => {
+      setChatPreselectedJobId(targetJobId || null);
+      setSection('chat');
+    },
+    [],
+  );
+
+  const clearChatPreselectedJobId = useCallback(() => {
+    setChatPreselectedJobId(null);
+  }, []);
   const hasActiveWorkflow = Boolean(jobId) || isLoading || status === 'processing' || status === 'pending';
 
   const checkBackendHealth = async () => {
@@ -313,6 +328,7 @@ function App() {
     { key: 'dashboard', label: 'Dashboard', icon: <AppGridIcon /> },
     { key: 'upload', label: 'Ingest', icon: <UploadIcon /> },
     { key: 'rules', label: 'Rules', icon: <ShieldCheckIcon /> },
+    { key: 'chat', label: 'Chat', icon: <MessageCircleIcon /> },
     { key: 'results', label: 'Results', icon: <FileTextIcon /> },
   ];
 
@@ -323,6 +339,7 @@ function App() {
         { key: 'dashboard', label: 'Overview', icon: <AppGridIcon /> },
         { key: 'upload', label: 'Document Ingest', icon: <UploadIcon /> },
         { key: 'rules', label: 'Compliance Rules', icon: <ShieldCheckIcon /> },
+        { key: 'chat', label: 'Document Chat', icon: <MessageCircleIcon /> },
         { key: 'results', label: 'Results', icon: <FileTextIcon />, badge: '3' },
       ],
     },
@@ -710,6 +727,17 @@ function App() {
             </section>
           ) : null}
 
+          {section === 'chat' ? (
+            <section id="section-chat">
+              <Chat
+                apiBase={API_BASE}
+                backendOnline={backendStatus === 'online'}
+                defaultJobId={chatPreselectedJobId}
+                onClearDefaultJobId={clearChatPreselectedJobId}
+              />
+            </section>
+          ) : null}
+
           {section === 'results' ? (
             <section id="section-results">
               <div className="page-header">
@@ -733,8 +761,10 @@ function App() {
                   fileName={activeFileName}
                   result={result}
                   status={status}
+                  jobId={jobId}
                   onExportReport={handleExportReport}
                   onReanalyze={handleReanalyze}
+                  onChatAboutDocument={handleOpenChatForDocument}
                 />
               ) : (
                 <div className="card">

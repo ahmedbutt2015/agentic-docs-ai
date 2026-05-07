@@ -4,6 +4,7 @@ import {
   ChevronDownIcon,
   DownloadIcon,
   FileTextIcon,
+  MessageCircleIcon,
   RefreshIcon,
   ShieldCheckIcon,
   TagIcon,
@@ -153,7 +154,7 @@ function severityClassFor(severity) {
   return 'sev-low';
 }
 
-function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
+function ResultDisplay({ fileName, jobId, onChatAboutDocument, onExportReport, onReanalyze, result }) {
   const [openSections, setOpenSections] = useState({
     text: true,
     issues: true,
@@ -202,6 +203,16 @@ function ResultDisplay({ fileName, onExportReport, onReanalyze, result }) {
   return (
     <div className="results-shell">
       <div className="page-actions results-actions">
+        {jobId && onChatAboutDocument ? (
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={() => onChatAboutDocument(jobId)}
+          >
+            <MessageCircleIcon />
+            Chat about this document
+          </button>
+        ) : null}
         <button className="btn btn-secondary" type="button" onClick={onExportReport}>
           <DownloadIcon />
           Export Report

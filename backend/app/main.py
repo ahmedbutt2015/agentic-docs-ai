@@ -7,7 +7,7 @@ from typing import List, Optional
 from fastapi import Depends, FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, select
 
 from app.agents.graph import run_compliance_graph
 from app.config import (
@@ -20,9 +20,12 @@ from app.config import (
 from app.database import SessionLocal, init_db
 from app.models import ComplianceRule, DocumentJob
 from app.schemas import (
+    ChatRequest,
+    ChatResponse,
     ComplianceReportResponse,
     DashboardResponse,
     FrameworksResponse,
+    JobSummaryResponse,
     RecentJobResponse,
     ResultResponse,
     RuleCreate,
@@ -35,6 +38,7 @@ from app.schemas import (
     UploadResponse,
 )
 from app.services import embedder, pipeline_log, vector_store
+from app.services.chat_service import chat_about_documents
 from app.services.chunker import chunk_extraction
 from app.services.ocr import build_result_payload, extract_document_data, run_extraction
 from app.services.rules_service import (
@@ -424,6 +428,32 @@ def search_chunks(
             for hit in hits
         ],
     )
+
+
+@app.get("/jobs", response_model=List[JobSummaryResponse])
+def list_jobs_endpoint(
+    status: Optional[str] = Query(None, description="Filter by job status"),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> List[JobSummaryResponse]:
+    stmt = select(DocumentJob).order_by(desc(DocumentJob.created_at)).limit(limit)
+    if status:
+        stmt = stmt.where(DocumentJob.status == status)
+    jobs = list(db.scalars(stmt).all())
+    return [JobSummaryResponse.model_validate(job, from_attributes=True) for job in jobs]
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat_endpoint(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+    history_dicts = [turn.model_dump() for turn in payload.history]
+    result = chat_about_documents(
+        db,
+        question=payload.question,
+        job_id=payload.job_id,
+        history=history_dicts,
+        limit=payload.limit,
+    )
+    return ChatResponse(answer=result["answer"], citations=result["citations"])
 
 
 @app.get("/dashboard", response_model=DashboardResponse)
