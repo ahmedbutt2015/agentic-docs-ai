@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.services import pdf_extractor, xlsx_extractor
+from app.services.processing_options import (
+    build_processing_details_response,
+    normalize_processing_options,
+)
 
 
 TEXT_EXTENSIONS = {
@@ -43,16 +47,26 @@ def extract_document_data(
     uploaded_at: Optional[datetime] = None,
     processed_at: Optional[datetime] = None,
     extraction: Optional[Dict[str, Any]] = None,
+    processing_options: Optional[Dict[str, Any]] = None,
+    processing_details: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if extraction is None:
         extraction = run_extraction(file_path)
     text = extraction["full_text"]
-    entities = _extract_entities(text)
+    options = normalize_processing_options(processing_options)
+    entities = _extract_entities(text) if options["extract_entities"] else {}
     metadata = _build_metadata(
         file_path, filename or file_path.name, text, extraction["meta"], uploaded_at, processed_at
     )
-    issues = _build_issues(text, entities, metadata, extraction["warnings"])
-    score = _build_score(text, entities, issues, metadata)
+    issues = _build_issues(text, entities, metadata, extraction["warnings"], processing_options=options)
+    score = _build_score(
+        text,
+        entities,
+        issues,
+        metadata,
+        processing_options=options,
+        processing_details=processing_details,
+    )
 
     return {
         "text": text,
@@ -62,6 +76,9 @@ def extract_document_data(
         "issues": issues,
         "pages": extraction["pages"],
         "warnings": extraction["warnings"],
+        "processing": build_processing_details_response(
+            processing_details or {"options": options}
+        ),
     }
 
 
@@ -72,13 +89,29 @@ def build_result_payload(
     processed_at: Optional[datetime],
     text: Optional[str],
     entities: Optional[Dict[str, Any]],
+    processing_options: Optional[Dict[str, Any]] = None,
+    processing_details: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     extraction = run_extraction(file_path)
     safe_text = text if text is not None else extraction["full_text"]
+    options = normalize_processing_options(processing_options)
     safe_entities = entities or {}
     metadata = _build_metadata(file_path, filename, safe_text, extraction["meta"], uploaded_at, processed_at)
-    issues = _build_issues(safe_text, safe_entities, metadata, extraction["warnings"])
-    score = _build_score(safe_text, safe_entities, issues, metadata)
+    issues = _build_issues(
+        safe_text,
+        safe_entities,
+        metadata,
+        extraction["warnings"],
+        processing_options=options,
+    )
+    score = _build_score(
+        safe_text,
+        safe_entities,
+        issues,
+        metadata,
+        processing_options=options,
+        processing_details=processing_details,
+    )
 
     return {
         "text": safe_text,
@@ -88,6 +121,9 @@ def build_result_payload(
         "issues": issues,
         "pages": extraction["pages"],
         "warnings": extraction["warnings"],
+        "processing": build_processing_details_response(
+            processing_details or {"options": options}
+        ),
     }
 
 
@@ -347,7 +383,9 @@ def _build_issues(
     entities: Dict[str, Any],
     metadata: Dict[str, Any],
     warnings: List[Dict[str, str]],
+    processing_options: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, str]]:
+    options = normalize_processing_options(processing_options)
     issues: List[Dict[str, str]] = []
 
     if metadata["text_source"].endswith("placeholder"):
@@ -373,7 +411,7 @@ def _build_issues(
             }
         )
 
-    if not any(key.startswith("date_") for key in entities):
+    if options["extract_entities"] and not any(key.startswith("date_") for key in entities):
         issues.append(
             {
                 "severity": "Medium",
@@ -383,7 +421,7 @@ def _build_issues(
             }
         )
 
-    if not any(key.startswith("amount_") for key in entities):
+    if options["extract_entities"] and not any(key.startswith("amount_") for key in entities):
         issues.append(
             {
                 "severity": "Low",
@@ -434,18 +472,27 @@ def _warning_severity_class(code: str) -> str:
     }[_warning_severity(code)]
 
 
-def _build_score(text: str, entities: Dict[str, Any], issues: List[Dict[str, str]], metadata: Dict[str, Any]) -> Dict[str, Any]:
+def _build_score(
+    text: str,
+    entities: Dict[str, Any],
+    issues: List[Dict[str, str]],
+    metadata: Dict[str, Any],
+    processing_options: Optional[Dict[str, Any]] = None,
+    processing_details: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    options = normalize_processing_options(processing_options)
+    details = processing_details if isinstance(processing_details, dict) else {}
     score = 100
 
     if metadata["text_source"].endswith("placeholder"):
         score -= 30
     if not text.strip():
         score -= 35
-    if not entities:
+    if options["extract_entities"] and not entities:
         score -= 20
-    if not any(key.startswith("date_") for key in entities):
+    if options["extract_entities"] and not any(key.startswith("date_") for key in entities):
         score -= 10
-    if not any(key.startswith("amount_") for key in entities):
+    if options["extract_entities"] and not any(key.startswith("amount_") for key in entities):
         score -= 5
     if metadata.get("is_encrypted"):
         score -= 25
@@ -462,11 +509,43 @@ def _build_score(text: str, entities: Dict[str, Any], issues: List[Dict[str, str
         label = "Needs Enrichment"
         summary = "Only limited document data is available right now, so downstream analysis should wait."
 
+    if not options["extract_entities"]:
+        summary += " Entity extraction was skipped by configuration."
+    if not options["index_for_chat"]:
+        summary += " Chat indexing was skipped by configuration."
+    if not options["run_compliance_check"]:
+        summary += " Compliance scoring was skipped by configuration."
+
+    extraction_status = (
+        "complete"
+        if text.strip() and not metadata["text_source"].endswith("placeholder")
+        else "partial"
+    )
+    entity_status = "skipped" if not options["extract_entities"] else ("complete" if entities else "pending")
+
+    chunks_indexed = int(details.get("chunks_indexed") or 0)
+    if not options["index_for_chat"]:
+        indexing_status = "skipped"
+    elif details.get("indexing_status") == "failed":
+        indexing_status = "failed"
+    elif chunks_indexed > 0:
+        indexing_status = "complete"
+    else:
+        indexing_status = "pending"
+
+    compliance_status = str(details.get("compliance_status") or "").strip().lower()
+    if not options["run_compliance_check"]:
+        compliance_stage_status = "skipped"
+    elif compliance_status in {"complete", "failed"}:
+        compliance_stage_status = compliance_status
+    else:
+        compliance_stage_status = "pending"
+
     framework_status = [
-        {"name": "Upload Metadata", "status": "complete"},
-        {"name": "Text Extraction", "status": "complete" if text.strip() and not metadata["text_source"].endswith("placeholder") else "partial"},
-        {"name": "Entity Detection", "status": "complete" if entities else "pending"},
-        {"name": "Deferred OCR/AI", "status": "pending" if metadata["text_source"].endswith("placeholder") else "not_needed"},
+        {"name": "Text Extraction", "status": extraction_status},
+        {"name": "Entity Extraction", "status": entity_status},
+        {"name": "Chat Indexing", "status": indexing_status},
+        {"name": "Compliance Scoring", "status": compliance_stage_status},
     ]
 
     if issues and score > 90:

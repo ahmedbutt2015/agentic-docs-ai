@@ -1,4 +1,3 @@
-import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -41,6 +40,7 @@ from app.services import embedder, pipeline_log, vector_store
 from app.services.chat_service import chat_about_documents
 from app.services.chunker import chunk_extraction
 from app.services.ocr import build_result_payload, extract_document_data, run_extraction
+from app.services.processing_options import normalize_processing_options, parse_processing_options
 from app.services.rules_service import (
     create_rule,
     delete_rule,
@@ -93,12 +93,22 @@ def process_document(
     job_id: str,
     file_path: Path,
     active_frameworks: Optional[List[str]] = None,
+    processing_options: Optional[dict] = None,
 ) -> None:
     db = SessionLocal()
     try:
         job = db.get(DocumentJob, job_id)
         if job is None:
             return
+
+        normalized_options = normalize_processing_options(processing_options)
+
+        def update_processing_details(**patch: object) -> None:
+            details = dict(job.processing_details or {})
+            details["options"] = normalized_options
+            details["selected_frameworks"] = list(active_frameworks or [])
+            details.update(patch)
+            job.processing_details = details
 
         size_kb = file_path.stat().st_size / 1024 if file_path.exists() else 0
         pipeline_log.section(
@@ -136,7 +146,10 @@ def process_document(
                 filename=job.filename,
                 uploaded_at=job.created_at,
                 extraction=extraction,
+                processing_options=normalized_options,
+                processing_details=job.processing_details,
             )
+        update_processing_details(entity_count=len(result["entities"]))
         pipeline_log.section("ANALYZE", time=timer.fmt())
         pipeline_log.kv(
             entities_found=len(result["entities"]),
@@ -151,99 +164,126 @@ def process_document(
         db.commit()
 
         chunks_indexed = 0
-        try:
-            with pipeline_log.timed() as timer:
-                chunks = chunk_extraction(
-                    extraction,
-                    doc_id=job_id,
-                    source_filename=job.filename,
-                )
-            pipeline_log.section(
-                "CHUNK",
-                target_tokens=512,
-                overlap_tokens=64,
-                tokenizer="cl100k_base",
-                time=timer.fmt(),
-            )
-            for chunk in chunks:
-                pipeline_log.line(
-                    f"chunk {chunk['chunk_index']:>2}: page={chunk['page_number']} "
-                    f"tokens={chunk['token_count']:>3} chars={chunk['char_start']}-{chunk['char_end']}"
-                )
-            total_tokens = sum(c["token_count"] for c in chunks)
-            pipeline_log.line(f"→ total: {len(chunks)} chunks, {total_tokens} tokens")
-
-            if chunks:
+        indexing_status = "pending"
+        if normalized_options["index_for_chat"]:
+            try:
                 with pipeline_log.timed() as timer:
-                    embeddings = embedder.embed_texts([chunk["text"] for chunk in chunks])
+                    chunks = chunk_extraction(
+                        extraction,
+                        doc_id=job_id,
+                        source_filename=job.filename,
+                    )
                 pipeline_log.section(
-                    "EMBED",
-                    model=EMBEDDING_MODEL,
-                    dim=len(embeddings[0]),
+                    "CHUNK",
+                    target_tokens=512,
+                    overlap_tokens=64,
+                    tokenizer="cl100k_base",
                     time=timer.fmt(),
                 )
-                for index, vector in enumerate(embeddings):
-                    preview = "[" + ", ".join(f"{v:+.3f}" for v in vector[:5]) + ", ...]"
-                    pipeline_log.line(f"chunk {index:>2}: {preview}")
-
-                with pipeline_log.timed() as timer:
-                    chunks_indexed = vector_store.replace_chunks_for_job(
-                        db, job_id, chunks, embeddings
+                for chunk in chunks:
+                    pipeline_log.line(
+                        f"chunk {chunk['chunk_index']:>2}: page={chunk['page_number']} "
+                        f"tokens={chunk['token_count']:>3} chars={chunk['char_start']}-{chunk['char_end']}"
                     )
-                pipeline_log.section("DB", table="document_chunks", time=timer.fmt())
-                pipeline_log.kv(
-                    upserted=chunks_indexed,
-                    embedding_column=f"Vector({len(embeddings[0])})",
-                    operation="cascade-replace",
-                )
-        except Exception as exc:
-            pipeline_log.section("ERROR", phase="embed_or_store", error=exc.__class__.__name__)
-            pipeline_log.line(str(exc))
-            job.status = "completed"
-            job.message = f"Document data is ready (embedding skipped: {exc.__class__.__name__})"
-            db.commit()
-            return
+                total_tokens = sum(c["token_count"] for c in chunks)
+                pipeline_log.line(f"→ total: {len(chunks)} chunks, {total_tokens} tokens")
+
+                if chunks:
+                    with pipeline_log.timed() as timer:
+                        embeddings = embedder.embed_texts([chunk["text"] for chunk in chunks])
+                    pipeline_log.section(
+                        "EMBED",
+                        model=EMBEDDING_MODEL,
+                        dim=len(embeddings[0]),
+                        time=timer.fmt(),
+                    )
+                    for index, vector in enumerate(embeddings):
+                        preview = "[" + ", ".join(f"{v:+.3f}" for v in vector[:5]) + ", ...]"
+                        pipeline_log.line(f"chunk {index:>2}: {preview}")
+
+                    with pipeline_log.timed() as timer:
+                        chunks_indexed = vector_store.replace_chunks_for_job(
+                            db, job_id, chunks, embeddings
+                        )
+                    pipeline_log.section("DB", table="document_chunks", time=timer.fmt())
+                    pipeline_log.kv(
+                        upserted=chunks_indexed,
+                        embedding_column=f"Vector({len(embeddings[0])})",
+                        operation="cascade-replace",
+                    )
+                indexing_status = "complete"
+            except Exception as exc:
+                indexing_status = "failed"
+                pipeline_log.section("ERROR", phase="embed_or_store", error=exc.__class__.__name__)
+                pipeline_log.line(str(exc))
+        else:
+            indexing_status = "skipped"
+            pipeline_log.section("INDEX", status="skipped", reason="option_disabled")
+            pipeline_log.line("chat indexing skipped by processing option")
+
+        update_processing_details(
+            chunks_indexed=chunks_indexed,
+            indexing_status=indexing_status,
+        )
+        db.commit()
 
         job.message = "Running compliance agents"
         db.commit()
 
         compliance_summary = "skipped"
-        try:
-            active_model = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else LLM_MODEL
-            with pipeline_log.timed() as timer:
-                report = run_compliance_graph(
-                    job_id=job_id,
-                    doc_filename=job.filename,
-                    doc_text=result["text"],
-                    provider=LLM_PROVIDER,
-                    model=active_model,
-                    active_frameworks=active_frameworks,
-                )
-            if report is not None:
-                job.result_compliance = report.model_dump()
-                compliance_summary = (
-                    f"score={report.score} label={report.label} "
-                    f"findings={len(report.findings)}"
-                )
-                pipeline_log.section("AGENT.GRAPH-DONE", time=timer.fmt())
-                pipeline_log.kv(
-                    score=report.score,
-                    label=report.label,
-                    findings=len(report.findings),
-                    frameworks=",".join(s.framework for s in report.frameworks),
-                )
-            else:
-                pipeline_log.section("AGENT.GRAPH-DONE", time=timer.fmt())
-                pipeline_log.line("no report produced")
-        except Exception as exc:
-            pipeline_log.section("ERROR", phase="agents", error=exc.__class__.__name__)
-            pipeline_log.line(str(exc))
-            compliance_summary = f"failed ({exc.__class__.__name__})"
+        compliance_status = "skipped"
+        if normalized_options["run_compliance_check"]:
+            try:
+                active_model = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else LLM_MODEL
+                with pipeline_log.timed() as timer:
+                    report = run_compliance_graph(
+                        job_id=job_id,
+                        doc_filename=job.filename,
+                        doc_text=result["text"],
+                        provider=LLM_PROVIDER,
+                        model=active_model,
+                        active_frameworks=active_frameworks,
+                    )
+                if report is not None:
+                    job.result_compliance = report.model_dump()
+                    compliance_status = "complete"
+                    compliance_summary = (
+                        f"score={report.score} label={report.label} "
+                        f"findings={len(report.findings)}"
+                    )
+                    pipeline_log.section("AGENT.GRAPH-DONE", time=timer.fmt())
+                    pipeline_log.kv(
+                        score=report.score,
+                        label=report.label,
+                        findings=len(report.findings),
+                        frameworks=",".join(s.framework for s in report.frameworks),
+                    )
+                else:
+                    compliance_status = "failed"
+                    pipeline_log.section("AGENT.GRAPH-DONE", time=timer.fmt())
+                    pipeline_log.line("no report produced")
+            except Exception as exc:
+                compliance_status = "failed"
+                pipeline_log.section("ERROR", phase="agents", error=exc.__class__.__name__)
+                pipeline_log.line(str(exc))
+                compliance_summary = f"failed ({exc.__class__.__name__})"
+        else:
+            pipeline_log.section("AGENT.GRAPH", status="skipped", reason="option_disabled")
+            pipeline_log.line("compliance scoring skipped by processing option")
+
+        update_processing_details(compliance_status=compliance_status)
+        db.commit()
 
         job.status = "completed"
-        chunk_part = (
-            f"{chunks_indexed} chunks indexed" if chunks_indexed else "no chunks indexed"
-        )
+        if normalized_options["index_for_chat"]:
+            if indexing_status == "failed":
+                chunk_part = "chat indexing failed"
+            else:
+                chunk_part = (
+                    f"{chunks_indexed} chunks indexed" if chunks_indexed else "no chunks indexed"
+                )
+        else:
+            chunk_part = "chat indexing skipped"
         job.message = f"Document data is ready ({chunk_part}; compliance {compliance_summary})"
         db.commit()
 
@@ -263,6 +303,7 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     frameworks: Optional[str] = Form(None),
+    processing_options: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
     job_id = str(uuid4())
@@ -270,19 +311,34 @@ async def upload_document(
     content = await file.read()
     target_path.write_bytes(content)
 
+    selected_frameworks = _parse_frameworks(frameworks)
+    try:
+        selected_processing_options = parse_processing_options(processing_options)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     job = DocumentJob(
         id=job_id,
         filename=file.filename,
         status="pending",
         message="Queued for processing",
         file_path=str(target_path),
+        processing_details={
+            "options": selected_processing_options,
+            "selected_frameworks": list(selected_frameworks or []),
+        },
     )
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    selected_frameworks = _parse_frameworks(frameworks)
-    background_tasks.add_task(process_document, job_id, target_path, selected_frameworks)
+    background_tasks.add_task(
+        process_document,
+        job_id,
+        target_path,
+        selected_frameworks,
+        selected_processing_options,
+    )
     return UploadResponse(id=job_id, status="pending", filename=file.filename)
 
 
@@ -316,6 +372,8 @@ def get_result(job_id: str, db: Session = Depends(get_db)) -> ResultResponse:
             processed_at=job.updated_at,
             text=job.result_text,
             entities=job.result_entities,
+            processing_options=(job.processing_details or {}).get("options"),
+            processing_details=job.processing_details,
         )
         if job.result_compliance:
             try:

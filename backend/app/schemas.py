@@ -91,6 +91,20 @@ class ComplianceReportResponse(BaseModel):
     llm_model: str
 
 
+class ProcessingOptionResponse(BaseModel):
+    key: str
+    label: str
+    enabled: bool
+
+
+class ProcessingDetailsResponse(BaseModel):
+    options: List[ProcessingOptionResponse] = Field(default_factory=list)
+    selected_frameworks: List[str] = Field(default_factory=list)
+    entity_count: int = 0
+    chunks_indexed: int = 0
+    compliance_status: Optional[str] = None
+
+
 class PageBlockResponse(BaseModel):
     text: str
     bbox: Optional[List[float]] = None
@@ -113,6 +127,7 @@ class ResultPayload(BaseModel):
     pages: List[PageResponse] = Field(default_factory=list)
     warnings: List[WarningResponse] = Field(default_factory=list)
     compliance: Optional[ComplianceReportResponse] = None
+    processing: Optional[ProcessingDetailsResponse] = None
 
 
 class ResultResponse(BaseModel):

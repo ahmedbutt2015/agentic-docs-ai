@@ -32,13 +32,15 @@ def _build_prompt(rules: List[Dict[str, Any]], doc_text: str) -> List[Dict[str, 
         "and produce strict, structured findings. You never invent rule IDs, never add "
         "preamble or markdown, and always emit valid JSON only."
     )
+    allowed_frameworks = sorted({rule["framework"] for rule in rules})
+    frameworks_block = ", ".join(f'"{name}"' for name in allowed_frameworks) or '"(none)"'
 
     user = f"""\
 Review the DOCUMENT below against the RULES.
 
 For EVERY rule, output one finding object with:
 - "rule_id": exactly the rule ID from the list (e.g. GDPR-Art.13)
-- "framework": one of "GDPR", "SOC2", "ISO27001"
+- "framework": exactly the framework label of the matching rule
 - "status": "pass" if the document clearly satisfies the rule;
             "warn" if partial / unclear;
             "fail" if the document violates or completely omits required content.
@@ -55,6 +57,9 @@ OUTPUT FORMAT — return ONLY this JSON object, with no preamble, no markdown, n
 
 RULES:
 {rules_block}
+
+ALLOWED FRAMEWORK LABELS:
+{frameworks_block}
 
 DOCUMENT:
 {truncated_doc}
@@ -83,6 +88,43 @@ def _parse_findings(raw: str) -> List[Finding]:
     return FindingsBatch.model_validate(payload).findings
 
 
+def _normalize_findings(findings: List[Finding], rules: List[Dict[str, Any]]) -> List[Finding]:
+    rule_lookup = {rule["rule_id"]: rule for rule in rules}
+    normalized: List[Finding] = []
+    seen_rule_ids = set()
+
+    for finding in findings:
+        rule = rule_lookup.get(finding.rule_id)
+        if rule is None or finding.rule_id in seen_rule_ids:
+            continue
+
+        normalized.append(
+            finding.model_copy(
+                update={
+                    "framework": rule["framework"],
+                    "severity": rule.get("severity") or finding.severity,
+                }
+            )
+        )
+        seen_rule_ids.add(finding.rule_id)
+
+    for rule in rules:
+        if rule["rule_id"] in seen_rule_ids:
+            continue
+        normalized.append(
+            Finding(
+                rule_id=rule["rule_id"],
+                framework=rule["framework"],
+                status="warn",
+                severity=rule.get("severity") or "Medium",
+                explanation="No structured finding was returned for this rule; review manually.",
+                evidence="not present",
+            )
+        )
+
+    return normalized
+
+
 def reason_node(state: ComplianceState) -> Dict[str, Any]:
     rules = state.get("applicable_rules") or []
     doc_text = state.get("doc_text") or ""
@@ -105,8 +147,8 @@ def reason_node(state: ComplianceState) -> Dict[str, Any]:
                 raw = chat_completion(messages, provider=provider, model=model)
             pipeline_log.line(f"attempt {attempt + 1}: {len(raw)} chars in {timer.fmt()}")
 
-            findings = _parse_findings(raw)
-            pipeline_log.line(f"parsed {len(findings)} findings")
+            findings = _normalize_findings(_parse_findings(raw), rules)
+            pipeline_log.line(f"parsed {len(findings)} normalized findings")
             return {"findings": findings}
         except (json.JSONDecodeError, ValidationError) as exc:
             last_error = f"JSON parse error: {exc}"

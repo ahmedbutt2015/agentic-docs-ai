@@ -192,6 +192,15 @@ function ResultDisplay({ fileName, jobId, onChatAboutDocument, onExportReport, o
     : scoreCircumference - (scoreCircumference * complianceScore) / 100;
   const complianceFindings = compliance?.findings || [];
   const complianceFrameworkSummaries = compliance?.frameworks || [];
+  const processing = result?.processing || null;
+  const enabledProcessingOptions = (processing?.options || []).filter((option) => option.enabled);
+  const selectedFrameworks = processing?.selected_frameworks || [];
+  const complianceOptionEnabled = (processing?.options || []).some(
+    (option) => option.key === 'run_compliance_check' && option.enabled,
+  );
+  const indexingOptionEnabled = (processing?.options || []).some(
+    (option) => option.key === 'index_for_chat' && option.enabled,
+  );
 
   const toggleSection = (sectionKey) => {
     setOpenSections((sections) => ({
@@ -473,15 +482,38 @@ function ResultDisplay({ fileName, jobId, onChatAboutDocument, onExportReport, o
                           ? 'badge-green'
                           : framework.status === 'partial'
                             ? 'badge-amber'
-                            : framework.status === 'pending'
-                              ? 'badge-blue'
-                              : 'badge-muted'
+                            : framework.status === 'failed'
+                              ? 'badge-red'
+                              : framework.status === 'pending'
+                                ? 'badge-blue'
+                                : 'badge-muted'
                       }`}
                     >
                       {framework.name}
                     </span>
                   ))}
                 </div>
+                {enabledProcessingOptions.length ? (
+                  <div className="score-badges">
+                    {enabledProcessingOptions.map((option) => (
+                      <span key={option.key} className="badge badge-muted">
+                        {option.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {processing ? (
+                  <div className="finding-llm-line">
+                    {indexingOptionEnabled
+                      ? `${processing.chunks_indexed} chunk(s) indexed`
+                      : 'chat indexing skipped'}
+                    {complianceOptionEnabled
+                      ? selectedFrameworks.length
+                        ? ` · scope: ${selectedFrameworks.join(', ')}`
+                        : ' · scope: all enabled frameworks'
+                      : ' · compliance scope skipped'}
+                  </div>
+                ) : null}
                 <div className="result-file-name">{fileName}</div>
                 <div className="metadata-grid">
                   <div className="metadata-item">

@@ -67,26 +67,7 @@ Framework names are **labels**, not knowledge sources. We don't ship the GDPR te
 
 ## Architecture
 
-```
-                          ┌────────────────────┐
-            upload  ───►  │   FastAPI backend  │
-                          │  (background task) │
-                          └─────────┬──────────┘
-                                    │
-                ┌───────────────────┼───────────────────┐
-                ▼                   ▼                   ▼
-         [Extract]            [Chunk + Embed]     [Compliance Graph]
-       PyMuPDF / openpyxl     tiktoken + bge      LangGraph (3 nodes)
-                                    │                   │
-                                    ▼                   ▼
-                             ┌──────────────┐    ┌──────────────┐
-                             │  pgvector    │    │  LLM         │
-                             │  + Postgres  │    │  HF / Claude │
-                             └──────────────┘    └──────────────┘
-                                    │
-                            ◄───────┴───────►
-                          Search   |    Chat   (citation-grounded)
-```
+![Regulus AI architecture](assets/arch.png)
 
 - **Backend**: FastAPI + SQLAlchemy + Postgres + pgvector + LangGraph
 - **Frontend**: React (Vite) — Dashboard / Ingest / Rules / Chat / Results

@@ -6,7 +6,7 @@ import {
   ShieldCheckIcon,
   UploadIcon,
 } from './Icons';
-import { PROCESSING_OPTIONS } from '../mockData';
+import { PROCESSING_OPTIONS } from '../processingOptions';
 
 function createRow(file, index) {
   const extension = file.name.split('.').pop()?.toLowerCase() || 'file';
@@ -31,10 +31,11 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [optionState, setOptionState] = useState(
-    PROCESSING_OPTIONS.reduce((accumulator, option) => ({ ...accumulator, [option.label]: option.enabled }), {}),
+    PROCESSING_OPTIONS.reduce((accumulator, option) => ({ ...accumulator, [option.key]: option.enabled }), {}),
   );
   const [availableFrameworks, setAvailableFrameworks] = useState([]);
   const [frameworkState, setFrameworkState] = useState({});
+  const complianceScoringEnabled = Boolean(optionState.run_compliance_check);
 
   useEffect(() => {
     if (!backendOnline) {
@@ -113,7 +114,8 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
     try {
       const formData = new FormData();
       formData.append('file', row.file);
-      if (selectedFrameworks.length) {
+      formData.append('processing_options', JSON.stringify(optionState));
+      if (complianceScoringEnabled && selectedFrameworks.length) {
         formData.append('frameworks', selectedFrameworks.join(','));
       }
 
@@ -330,15 +332,15 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
           </div>
           <div className="card-body option-list">
             {PROCESSING_OPTIONS.map((option) => (
-              <label key={option.label} className="option-row">
+              <label key={option.key} className="option-row">
                 <span className="option-label">{option.label}</span>
                 <button
                   type="button"
-                  className={`toggle ${optionState[option.label] ? 'on' : ''}`}
+                  className={`toggle ${optionState[option.key] ? 'on' : ''}`}
                   onClick={() =>
                     setOptionState((currentState) => ({
                       ...currentState,
-                      [option.label]: !currentState[option.label],
+                      [option.key]: !currentState[option.key],
                     }))
                   }
                 />
@@ -355,6 +357,11 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
             </div>
           </div>
           <div className="card-body framework-list">
+            {!complianceScoringEnabled ? (
+              <p className="framework-hint">
+                Compliance scoring is off, so framework selection is currently skipped for this upload.
+              </p>
+            ) : null}
             {availableFrameworks.length === 0 ? (
               <p className="framework-hint">
                 {backendOnline
@@ -370,6 +377,7 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
                       key={name}
                       type="button"
                       className={`framework-chip ${isActive ? 'framework-chip-active' : 'framework-chip-muted'}`}
+                      disabled={!complianceScoringEnabled}
                       onClick={() =>
                         setFrameworkState((current) => ({ ...current, [name]: !current[name] }))
                       }
@@ -384,7 +392,7 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
                     </button>
                   );
                 })}
-                {selectedFrameworks.length === 0 ? (
+                {complianceScoringEnabled && selectedFrameworks.length === 0 ? (
                   <p className="framework-hint">
                     No frameworks selected — the backend will evaluate every framework with at least one enabled rule.
                   </p>

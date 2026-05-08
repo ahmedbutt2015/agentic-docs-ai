@@ -26,6 +26,9 @@ def init_db() -> None:
             connection.execute(
                 text("ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS result_compliance JSON")
             )
+            connection.execute(
+                text("ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS processing_details JSON")
+            )
 
     from app.services.rules_service import seed_default_rules_if_empty
 
