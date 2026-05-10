@@ -30,29 +30,31 @@ function loadInitialState(defaultJobId) {
 }
 
 function Chat({ apiBase, backendOnline, defaultJobId, onClearDefaultJobId }) {
-  const initialRef = useRef(false);
-  const [messages, setMessages] = useState(() => loadInitialState(defaultJobId).messages);
-  const [scopeJobId, setScopeJobId] = useState(() => loadInitialState(defaultJobId).scopeJobId);
+  const initialStateRef = useRef(loadInitialState(defaultJobId));
+  const lastAppliedDefaultJobIdRef = useRef(defaultJobId || '');
+  const [messages, setMessages] = useState(initialStateRef.current.messages);
+  const [scopeJobId, setScopeJobId] = useState(initialStateRef.current.scopeJobId);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [jobs, setJobs] = useState(null);
   const messagesEndRef = useRef(null);
 
-  // If parent supplies a defaultJobId after mount, jump to it and reset conversation
+  // Consume one-time document handoffs from the Results page without making them sticky.
   useEffect(() => {
-    if (!defaultJobId) return;
-    if (!initialRef.current) {
-      initialRef.current = true;
+    if (!defaultJobId) {
       return;
     }
-    setScopeJobId(defaultJobId);
-    setMessages([]);
-    if (onClearDefaultJobId) {
-      onClearDefaultJobId();
+
+    if (lastAppliedDefaultJobIdRef.current !== defaultJobId) {
+      lastAppliedDefaultJobIdRef.current = defaultJobId;
+      setScopeJobId(defaultJobId);
+      setMessages([]);
+      setError('');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultJobId]);
+
+    onClearDefaultJobId?.();
+  }, [defaultJobId, onClearDefaultJobId]);
 
   // Persist conversation across navigation
   useEffect(() => {
