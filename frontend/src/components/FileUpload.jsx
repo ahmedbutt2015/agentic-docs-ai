@@ -256,6 +256,8 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
             className={`upload-zone ${isDragging ? 'drag-over' : ''} ${backendOnline ? '' : 'disabled'}`}
             id="dropZone"
             type="button"
+            disabled={!backendOnline}
+            aria-disabled={!backendOnline}
             onClick={() => {
               if (backendOnline) {
                 inputRef.current?.click();
@@ -337,6 +339,8 @@ function FileUpload({ apiBase, backendOnline, demoRunId, onDemoComplete, onToast
                 <button
                   type="button"
                   className={`toggle ${optionState[option.key] ? 'on' : ''}`}
+                  aria-label={`${optionState[option.key] ? 'Disable' : 'Enable'} ${option.label}`}
+                  aria-pressed={optionState[option.key]}
                   onClick={() =>
                     setOptionState((currentState) => ({
                       ...currentState,
