@@ -97,7 +97,29 @@ function App() {
   const [dashboard, setDashboard] = useState(null);
   const [backendStatus, setBackendStatus] = useState('checking');
   const [backendVersion, setBackendVersion] = useState('');
+  const [backendUptime, setBackendUptime] = useState('');
   const [chatPreselectedJobId, setChatPreselectedJobId] = useState(null);
+
+  const formatBackendUptime = (seconds) => {
+    if (seconds == null || Number.isNaN(Number(seconds))) {
+      return '';
+    }
+
+    const uptime = Number(seconds);
+    if (uptime < 60) {
+      return `${uptime}s`;
+    }
+
+    const minutes = Math.floor(uptime / 60);
+    const remainingSeconds = uptime % 60;
+    if (minutes < 60) {
+      return `${minutes}m ${remainingSeconds}s`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return `${hours}h ${remainingMinutes}m`;
+  };
 
   const handleOpenChatForDocument = useCallback(
     (targetJobId) => {
@@ -118,15 +140,18 @@ function App() {
       if (!response.ok) {
         setBackendStatus('offline');
         setBackendVersion('');
+        setBackendUptime('');
         return;
       }
 
       const data = await response.json();
       setBackendStatus(data.status === 'ok' ? 'online' : 'offline');
       setBackendVersion(data.version || '');
+      setBackendUptime(formatBackendUptime(data.uptime_seconds));
     } catch (error) {
       setBackendStatus('offline');
       setBackendVersion('');
+      setBackendUptime('');
     }
   };
 
@@ -494,7 +519,7 @@ function App() {
           <div className="status-pill">
             <div className={`status-dot status-dot-${backendStatus}`}></div>
             {backendStatus === 'online'
-              ? `Backend Connected${backendVersion ? ` · v${backendVersion}` : ''}`
+              ? `Backend Connected${backendVersion ? ` · v${backendVersion}` : ''}${backendUptime ? ` · up ${backendUptime}` : ''}`
               : backendStatus === 'offline'
                 ? 'Backend Offline'
                 : 'Checking Backend'}
