@@ -1,5 +1,6 @@
 from pathlib import Path
 from uuid import uuid4
+from datetime import datetime
 
 from typing import List, Optional
 
@@ -63,6 +64,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+SERVICE_VERSION = "0.1.0"
+START_TIME = datetime.utcnow()
 
 
 def get_db():
@@ -295,7 +299,13 @@ def process_document(
 
 @app.get("/health")
 def health_check() -> dict:
-    return {"status": "ok", "service": "regulus-ai-backend"}
+    uptime_seconds = int((datetime.utcnow() - START_TIME).total_seconds())
+    return {
+        "status": "ok",
+        "service": "regulus-ai-backend",
+        "version": SERVICE_VERSION,
+        "uptime_seconds": uptime_seconds,
+    }
 
 
 @app.post("/upload", response_model=UploadResponse)
