@@ -96,6 +96,7 @@ function App() {
   const [logLines, setLogLines] = useState(INITIAL_LOGS);
   const [dashboard, setDashboard] = useState(null);
   const [backendStatus, setBackendStatus] = useState('checking');
+  const [backendVersion, setBackendVersion] = useState('');
   const [chatPreselectedJobId, setChatPreselectedJobId] = useState(null);
 
   const handleOpenChatForDocument = useCallback(
@@ -116,12 +117,16 @@ function App() {
       const response = await fetch(`${API_BASE}/health`);
       if (!response.ok) {
         setBackendStatus('offline');
+        setBackendVersion('');
         return;
       }
 
-      setBackendStatus('online');
+      const data = await response.json();
+      setBackendStatus(data.status === 'ok' ? 'online' : 'offline');
+      setBackendVersion(data.version || '');
     } catch (error) {
       setBackendStatus('offline');
+      setBackendVersion('');
     }
   };
 
@@ -307,6 +312,21 @@ function App() {
       );
     }
 
+    reportLines.splice(3, 0,
+      `Document ID: ${jobId || 'N/A'}`,
+      `Uploaded: ${resultMeta?.createdAt || 'N/A'}`,
+      `Last processed: ${resultMeta?.updatedAt || 'N/A'}`,
+      '',
+      'Processing options:',
+      ...((result.processing?.options || []).map((option) => `- ${option.label}: ${option.enabled ? 'enabled' : 'disabled'}`)),
+      '',
+      'Selected frameworks:',
+      ...((result.processing?.selected_frameworks || []).length
+        ? result.processing.selected_frameworks.map((name) => `- ${name}`)
+        : ['- none']),
+      ''
+    );
+
     const reportText = reportLines.join('\n');
 
     const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
@@ -317,6 +337,16 @@ function App() {
     anchor.click();
     URL.revokeObjectURL(url);
     pushToast('success', 'Compliance report exported');
+  };
+
+  const handleCopyJobId = () => {
+    if (!jobId) {
+      pushToast('error', 'No active job to copy');
+      return;
+    }
+
+    navigator.clipboard.writeText(jobId);
+    pushToast('success', 'Job ID copied to clipboard');
   };
 
   const handleReanalyze = () => {
@@ -464,7 +494,7 @@ function App() {
           <div className="status-pill">
             <div className={`status-dot status-dot-${backendStatus}`}></div>
             {backendStatus === 'online'
-              ? 'Backend Connected'
+              ? `Backend Connected${backendVersion ? ` · v${backendVersion}` : ''}`
               : backendStatus === 'offline'
                 ? 'Backend Offline'
                 : 'Checking Backend'}
@@ -764,6 +794,7 @@ function App() {
                   jobId={jobId}
                   onExportReport={handleExportReport}
                   onReanalyze={handleReanalyze}
+                  onCopyJobId={handleCopyJobId}
                   onChatAboutDocument={handleOpenChatForDocument}
                 />
               ) : (
