@@ -154,7 +154,7 @@ function severityClassFor(severity) {
   return 'sev-low';
 }
 
-function ResultDisplay({ fileName, jobId, onChatAboutDocument, onExportReport, onReanalyze, result }) {
+function ResultDisplay({ fileName, jobId, onChatAboutDocument, onExportReport, onReanalyze, onCopyJobId, result }) {
   const [openSections, setOpenSections] = useState({
     text: true,
     issues: true,
@@ -220,6 +220,11 @@ function ResultDisplay({ fileName, jobId, onChatAboutDocument, onExportReport, o
           >
             <MessageCircleIcon />
             Chat about this document
+          </button>
+        ) : null}
+        {jobId && onCopyJobId ? (
+          <button className="btn btn-secondary" type="button" onClick={onCopyJobId}>
+            Copy Job ID
           </button>
         ) : null}
         <button className="btn btn-secondary" type="button" onClick={onExportReport}>
