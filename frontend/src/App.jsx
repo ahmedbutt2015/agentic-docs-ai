@@ -776,6 +776,9 @@ function App() {
                   <div className="page-subtitle">
                     {activeFileName || 'No document selected'} · Processed {formatTimestamp(resultMeta?.updatedAt)}
                   </div>
+                  {jobId ? (
+                    <div className="page-meta">Job ID: {jobId}</div>
+                  ) : null}
                 </div>
               </div>
 
