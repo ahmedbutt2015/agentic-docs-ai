@@ -6,8 +6,6 @@ and lets you chat with the indexed corpus.
 
 ![Regulus AI banner](assets/regulus-banner.png)
 
-![Regulus AI logo](assets/regulus-logo.png)
-
 > **Bring your own rules. Run it on your own machine. No data leaves your server.**
 
 ---
