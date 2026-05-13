@@ -1,4 +1,4 @@
-.PHONY: setup setup-backend setup-frontend backend frontend dev
+.PHONY: setup setup-backend setup-frontend backend frontend dev test-backend
 
 setup-backend:
 	python3 -m venv .venv
@@ -17,3 +17,6 @@ frontend:
 
 dev:
 	./scripts/dev.sh
+
+test-backend:
+	.venv/bin/python -m unittest discover -s backend/tests
