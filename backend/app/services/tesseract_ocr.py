@@ -1,11 +1,12 @@
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import fitz
-from PIL import Image
+from PIL import Image, ImageOps
 
-from app.config import OCR_LANGUAGE, TESSERACT_CMD
+from app.config import OCR_LANGUAGE, OCR_PSM, TESSERACT_CMD
 
 try:
     import pytesseract
@@ -18,6 +19,7 @@ def _configure_tesseract() -> None:
         pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
 
+@lru_cache(maxsize=1)
 def is_available() -> bool:
     if pytesseract is None:
         return False
@@ -28,6 +30,12 @@ def is_available() -> bool:
     except Exception:
         return False
     return True
+
+
+def _preprocess_image(image: Image.Image) -> Image.Image:
+    # Keep preprocessing light so we improve contrast without pulling in heavier CV deps.
+    grayscale = ImageOps.grayscale(image)
+    return ImageOps.autocontrast(grayscale)
 
 
 def _coerce_confidence(raw_value: Any) -> Optional[float]:
@@ -44,14 +52,16 @@ def _extract_blocks(image: Image.Image) -> Dict[str, Any]:
     if not is_available():
         raise RuntimeError("Tesseract OCR is not available.")
 
+    processed_image = _preprocess_image(image)
     data = pytesseract.image_to_data(
-        image,
+        processed_image,
         lang=OCR_LANGUAGE,
+        config=f"--psm {OCR_PSM}",
         output_type=pytesseract.Output.DICT,
     )
 
     blocks: List[Dict[str, Any]] = []
-    text_lines: List[str] = []
+    line_groups: Dict[tuple, List[str]] = {}
     confidences: List[float] = []
 
     total_items = len(data.get("text", []))
@@ -72,12 +82,19 @@ def _extract_blocks(image: Image.Image) -> Dict[str, Any]:
             "confidence": confidence if confidence is not None else 0.0,
         }
         blocks.append(block)
-        text_lines.append(text)
+        line_key = (
+            int(data["block_num"][index]),
+            int(data["par_num"][index]),
+            int(data["line_num"][index]),
+        )
+        line_groups.setdefault(line_key, []).append(text)
         if confidence is not None:
             confidences.append(confidence)
 
+    text_lines = [" ".join(words).strip() for _, words in sorted(line_groups.items()) if words]
+
     return {
-        "text": " ".join(text_lines).strip(),
+        "text": "\n".join(text_lines).strip(),
         "blocks": blocks,
         "avg_confidence": (sum(confidences) / len(confidences)) if confidences else 0.0,
     }

@@ -29,3 +29,5 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
 
 TESSERACT_CMD = os.getenv("TESSERACT_CMD")
 OCR_LANGUAGE = os.getenv("OCR_LANGUAGE", "eng")
+OCR_PSM = os.getenv("OCR_PSM", "6")
+OCR_RENDER_DPI = int(os.getenv("OCR_RENDER_DPI", "200"))

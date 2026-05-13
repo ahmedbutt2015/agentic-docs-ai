@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 import fitz
 
+from app.config import OCR_RENDER_DPI
 from app.services import tesseract_ocr
 
 
@@ -180,7 +181,11 @@ def extract_pdf_text(file_path: Path) -> Dict[str, Any]:
             native_length = len(page_data["text"])
             if native_length < LOW_TEXT_THRESHOLD and ocr_available:
                 try:
-                    ocr_page = tesseract_ocr.extract_pdf_page(page, page_number)
+                    ocr_page = tesseract_ocr.extract_pdf_page(
+                        page,
+                        page_number,
+                        dpi=OCR_RENDER_DPI,
+                    )
                     if len(ocr_page["text"]) >= max(native_length + 20, OCR_RECOVERY_MIN_CHARS):
                         page_data["text"] = ocr_page["text"]
                         page_data["blocks"] = ocr_page["blocks"]
