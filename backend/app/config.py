@@ -26,3 +26,6 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "huggingface")
 LLM_MODEL = os.getenv("LLM_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+
+TESSERACT_CMD = os.getenv("TESSERACT_CMD")
+OCR_LANGUAGE = os.getenv("OCR_LANGUAGE", "eng")

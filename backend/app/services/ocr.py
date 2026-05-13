@@ -11,6 +11,7 @@ from app.services.processing_options import (
     build_processing_details_response,
     normalize_processing_options,
 )
+from app.services import tesseract_ocr
 
 
 TEXT_EXTENSIONS = {
@@ -141,7 +142,7 @@ def run_extraction(file_path: Path) -> Dict[str, Any]:
 
     if extension == ".pdf":
         result = pdf_extractor.extract_pdf_text(file_path)
-        result["meta"]["text_source"] = "pdf-native"
+        result["meta"]["text_source"] = result["meta"].get("text_source") or "pdf-native"
         result["warnings"] = pre_warnings + result["warnings"]
         return result
 
@@ -175,16 +176,7 @@ def run_extraction(file_path: Path) -> Dict[str, Any]:
         )
 
     if extension in IMAGE_EXTENSIONS:
-        placeholder = (
-            "Image uploaded successfully. OCR is not enabled yet, so only file metadata is "
-            "available for this document."
-        )
-        return _wrap_text_extraction(
-            text=placeholder,
-            text_source="image-placeholder",
-            engine="placeholder",
-            warnings=pre_warnings,
-        )
+        return _extract_image_with_ocr(file_path, pre_warnings)
 
     placeholder = (
         f"{file_path.suffix.upper() or 'Unknown'} file uploaded successfully. "
@@ -219,6 +211,72 @@ def _validate_file(file_path: Path) -> List[Dict[str, str]]:
         )
 
     return warnings
+
+
+def _extract_image_with_ocr(file_path: Path, warnings: List[Dict[str, str]]) -> Dict[str, Any]:
+    if not tesseract_ocr.is_available():
+        fallback_warnings = list(warnings)
+        fallback_warnings.append(
+            {
+                "code": "OCR-UNAVAILABLE",
+                "message": "Tesseract OCR is not available, so image text could not be extracted.",
+            }
+        )
+        return _wrap_text_extraction(
+            text="Image uploaded, but OCR is unavailable in the current backend environment.",
+            text_source="image-placeholder",
+            engine="placeholder",
+            warnings=fallback_warnings,
+        )
+
+    try:
+        page = tesseract_ocr.extract_image_file(file_path)
+    except Exception as exc:
+        fallback_warnings = list(warnings)
+        fallback_warnings.append(
+            {
+                "code": "OCR-FAILED",
+                "message": f"Image OCR failed with {exc.__class__.__name__}.",
+            }
+        )
+        return _wrap_text_extraction(
+            text="Image OCR failed, so only limited metadata is available for this document.",
+            text_source="image-placeholder",
+            engine="placeholder",
+            warnings=fallback_warnings,
+        )
+
+    ocr_warnings = list(warnings)
+    if not page["text"]:
+        ocr_warnings.append(
+            {
+                "code": "OCR-NO-TEXT",
+                "message": "Image OCR completed but did not detect readable text.",
+            }
+        )
+
+    return {
+        "full_text": page["text"],
+        "pages": [
+            {
+                "page_number": 1,
+                "text": page["text"],
+                "blocks": page["blocks"],
+            }
+        ],
+        "meta": {
+            "source": "ocr",
+            "engine": "tesseract",
+            "page_count": 1,
+            "title": None,
+            "author": None,
+            "created_at": None,
+            "is_encrypted": False,
+            "avg_confidence": page["avg_confidence"],
+            "text_source": "image-ocr",
+        },
+        "warnings": ocr_warnings,
+    }
 
 
 def _empty_extraction(text_source: str, engine: str, warnings: List[Dict[str, str]]) -> Dict[str, Any]:
@@ -456,10 +514,11 @@ def _build_issues(
 
 def _warning_severity(code: str) -> str:
     if code in {"FILE-MISSING", "FILE-OVERSIZED", "PDF-CORRUPTED", "PDF-ENCRYPTED",
-                "XLSX-CORRUPTED", "XLSX-ENCRYPTED", "DOCX-CORRUPTED", "PDF-NO-TEXT"}:
+                "XLSX-CORRUPTED", "XLSX-ENCRYPTED", "DOCX-CORRUPTED", "PDF-NO-TEXT",
+                "OCR-FAILED", "OCR-UNAVAILABLE"}:
         return "High"
     if code in {"PDF-LOW-TEXT", "PDF-PAGE-LIMIT", "XLSX-SHEET-LIMIT", "XLSX-ROW-LIMIT",
-                "PDF-PAGE-ERROR", "XLSX-SHEET-ERROR"}:
+                "PDF-PAGE-ERROR", "XLSX-SHEET-ERROR", "PDF-OCR-FALLBACK", "OCR-NO-TEXT"}:
         return "Medium"
     return "Low"
 

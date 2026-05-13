@@ -4,9 +4,12 @@ from typing import Any, Dict, List, Optional
 
 import fitz
 
+from app.services import tesseract_ocr
+
 
 MAX_PAGES = 1000
 LOW_TEXT_THRESHOLD = 100
+OCR_RECOVERY_MIN_CHARS = 20
 
 
 def build_pdf_output(
@@ -156,6 +159,10 @@ def extract_pdf_text(file_path: Path) -> Dict[str, Any]:
         pages: List[Dict[str, Any]] = []
         full_text_parts: List[str] = []
         low_text_pages: List[int] = []
+        ocr_applied_pages: List[int] = []
+        ocr_failed_pages: List[int] = []
+        ocr_confidences: List[float] = []
+        ocr_available = tesseract_ocr.is_available()
 
         for page_number in range(1, pages_to_read + 1):
             try:
@@ -170,6 +177,19 @@ def extract_pdf_text(file_path: Path) -> Dict[str, Any]:
                 )
                 continue
 
+            native_length = len(page_data["text"])
+            if native_length < LOW_TEXT_THRESHOLD and ocr_available:
+                try:
+                    ocr_page = tesseract_ocr.extract_pdf_page(page, page_number)
+                    if len(ocr_page["text"]) >= max(native_length + 20, OCR_RECOVERY_MIN_CHARS):
+                        page_data["text"] = ocr_page["text"]
+                        page_data["blocks"] = ocr_page["blocks"]
+                        ocr_applied_pages.append(page_number)
+                        if ocr_page["avg_confidence"] > 0:
+                            ocr_confidences.append(ocr_page["avg_confidence"])
+                except Exception:
+                    ocr_failed_pages.append(page_number)
+
             pages.append(page_data)
             full_text_parts.append(page_data["text"])
             if len(page_data["text"]) < LOW_TEXT_THRESHOLD:
@@ -177,14 +197,43 @@ def extract_pdf_text(file_path: Path) -> Dict[str, Any]:
 
         full_text = "\n".join(full_text_parts).strip()
 
+        if ocr_applied_pages:
+            warnings.append(
+                {
+                    "code": "PDF-OCR-FALLBACK",
+                    "message": (
+                        f"OCR fallback was applied to {len(ocr_applied_pages)} low-text page(s): "
+                        f"{ocr_applied_pages[:10]}{'…' if len(ocr_applied_pages) > 10 else ''}."
+                    ),
+                }
+            )
+
         if low_text_pages:
             warnings.append(
                 {
                     "code": "PDF-LOW-TEXT",
                     "message": (
-                        f"{len(low_text_pages)} page(s) have very little extractable text "
-                        f"and may need OCR fallback in v2: {low_text_pages[:10]}"
-                        f"{'…' if len(low_text_pages) > 10 else ''}."
+                        f"{len(low_text_pages)} page(s) still have very little extractable text after processing: "
+                        f"{low_text_pages[:10]}{'…' if len(low_text_pages) > 10 else ''}."
+                    ),
+                }
+            )
+
+        if low_text_pages and not ocr_available:
+            warnings.append(
+                {
+                    "code": "OCR-UNAVAILABLE",
+                    "message": "Tesseract OCR is not available, so low-text PDF pages could not use OCR fallback.",
+                }
+            )
+
+        if ocr_failed_pages:
+            warnings.append(
+                {
+                    "code": "OCR-FAILED",
+                    "message": (
+                        f"OCR fallback failed on page(s) {ocr_failed_pages[:10]}"
+                        f"{'…' if len(ocr_failed_pages) > 10 else ''}."
                     ),
                 }
             )
@@ -193,16 +242,18 @@ def extract_pdf_text(file_path: Path) -> Dict[str, Any]:
             warnings.append(
                 {
                     "code": "PDF-NO-TEXT",
-                    "message": "No native text was extracted; document is likely scanned and needs OCR.",
+                    "message": "No readable text was extracted from the PDF after native parsing and OCR fallback.",
                 }
             )
 
         meta = {
-            "source": "native",
-            "engine": "pymupdf",
-            "avg_confidence": 1.0,
+            "source": "hybrid" if ocr_applied_pages else "native",
+            "engine": "pymupdf+tesseract" if ocr_applied_pages else "pymupdf",
+            "avg_confidence": (sum(ocr_confidences) / len(ocr_confidences)) if ocr_confidences else 1.0,
             **meta_fields,
         }
+
+        meta["text_source"] = "pdf-ocr" if ocr_applied_pages else "pdf-native"
 
         return build_pdf_output(full_text, pages, meta, warnings)
     finally:

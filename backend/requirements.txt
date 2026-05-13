@@ -8,7 +8,9 @@ psycopg2-binary
 python-dotenv
 pypdf
 PyMuPDF
+Pillow
 openpyxl
+pytesseract
 tiktoken
 huggingface_hub
 pgvector
