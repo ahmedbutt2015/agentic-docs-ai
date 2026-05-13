@@ -1,10 +1,10 @@
+![Regulus AI banner](assets/regulus-banner.png)
+
 # Regulus AI — Self-Hosted Compliance Triage & Document Chat
 
 A locally-deployed toolkit that ingests business documents, indexes them with
 embeddings, evaluates each one against a set of compliance rules **you define**,
 and lets you chat with the indexed corpus.
-
-![Regulus AI banner](assets/regulus-banner.png)
 
 > **Bring your own rules. Run it on your own machine. No data leaves your server.**
 
