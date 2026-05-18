@@ -93,15 +93,23 @@ def get_rule(db: Session, rule_pk: int) -> Optional[ComplianceRule]:
     return db.get(ComplianceRule, rule_pk)
 
 
+def _normalize_rule_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {}
+    for key, value in payload.items():
+        normalized[key] = value.strip() if isinstance(value, str) else value
+    return normalized
+
+
 def create_rule(db: Session, payload: Dict[str, Any]) -> ComplianceRule:
+    normalized_payload = _normalize_rule_payload(payload)
     rule = ComplianceRule(
-        rule_id=payload["rule_id"].strip(),
-        framework=payload["framework"].strip(),
-        title=payload["title"].strip(),
-        check=payload["check"].strip(),
-        severity=payload.get("severity", "Medium"),
+        rule_id=normalized_payload["rule_id"],
+        framework=normalized_payload["framework"],
+        title=normalized_payload["title"],
+        check=normalized_payload["check"],
+        severity=normalized_payload.get("severity", "Medium"),
         is_default=False,
-        is_enabled=payload.get("is_enabled", True),
+        is_enabled=normalized_payload.get("is_enabled", True),
     )
     db.add(rule)
     db.commit()
@@ -110,12 +118,10 @@ def create_rule(db: Session, payload: Dict[str, Any]) -> ComplianceRule:
 
 
 def update_rule(db: Session, rule: ComplianceRule, payload: Dict[str, Any]) -> ComplianceRule:
+    payload = _normalize_rule_payload(payload)
     for field in ("rule_id", "framework", "title", "check", "severity"):
         if field in payload and payload[field] is not None:
-            value = payload[field]
-            if isinstance(value, str):
-                value = value.strip()
-            setattr(rule, field, value)
+            setattr(rule, field, payload[field])
     if "is_enabled" in payload and payload["is_enabled"] is not None:
         rule.is_enabled = bool(payload["is_enabled"])
     db.commit()

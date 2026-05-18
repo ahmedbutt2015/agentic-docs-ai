@@ -167,11 +167,15 @@ class SearchResponse(BaseModel):
 
 
 class RuleBase(BaseModel):
-    rule_id: str
-    framework: str
-    title: str
-    check: str
-    severity: str = "Medium"
+    model_config = {
+        "str_strip_whitespace": True,
+    }
+
+    rule_id: str = Field(..., min_length=1)
+    framework: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1)
+    check: str = Field(..., min_length=1)
+    severity: str = Field("Medium", min_length=1)
     is_enabled: bool = True
 
 
