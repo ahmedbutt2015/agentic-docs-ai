@@ -23,13 +23,21 @@ def get_client():
 def _coerce_to_vector(raw: object) -> List[float]:
     import numpy as np
 
-    array = np.asarray(raw, dtype="float32")
+    if isinstance(raw, dict):
+        if 'embedding' in raw:
+            raw = raw['embedding']
+        elif 'data' in raw:
+            raw = raw['data']
+        elif 'result' in raw:
+            raw = raw['result']
+
+    array = np.asarray(raw, dtype='float32')
     if array.ndim == 3:
         array = array[0]
     if array.ndim == 2:
         array = array.mean(axis=0)
     if array.ndim != 1:
-        raise ValueError(f"Unexpected embedding shape from HF: {array.shape}")
+        raise ValueError(f'Unexpected embedding shape from HF: {array.shape}')
 
     norm = float(np.linalg.norm(array))
     if norm > 0:
@@ -37,7 +45,7 @@ def _coerce_to_vector(raw: object) -> List[float]:
 
     if array.shape[0] != EMBEDDING_DIMENSIONS:
         raise ValueError(
-            f"Embedding dimension mismatch: model returned {array.shape[0]} but config expects {EMBEDDING_DIMENSIONS}"
+            f'Embedding dimension mismatch: model returned {array.shape[0]} but config expects {EMBEDDING_DIMENSIONS}'
         )
 
     return array.tolist()
@@ -56,8 +64,28 @@ def embed_text(text: str, model: Optional[str] = None) -> List[float]:
             last_error = exc
             time.sleep(2 ** attempt)
 
-    raise RuntimeError(f"HF embedding call failed after 3 attempts: {last_error}")
+    raise RuntimeError(f'HF embedding call failed after 3 attempts: {last_error}')
 
 
 def embed_texts(texts: List[str], model: Optional[str] = None) -> List[List[float]]:
-    return [embed_text(text, model=model) for text in texts]
+    if not texts:
+        return []
+
+    if len(texts) == 1:
+        return [embed_text(texts[0], model=model)]
+
+    client = get_client()
+    target_model = model or EMBEDDING_MODEL
+
+    last_error: Optional[Exception] = None
+    for attempt in range(3):
+        try:
+            result = client.feature_extraction(texts, model=target_model)
+            if isinstance(result, list) and len(result) == len(texts):
+                return [_coerce_to_vector(item) for item in result]
+            return [_coerce_to_vector(item) for item in result]
+        except Exception as exc:  # broad to cover transient HF / network errors
+            last_error = exc
+            time.sleep(2 ** attempt)
+
+    raise RuntimeError(f'HF embedding batch call failed after 3 attempts: {last_error}')
