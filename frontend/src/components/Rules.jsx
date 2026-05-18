@@ -25,13 +25,16 @@ const EMPTY_FORM = {
   is_enabled: true,
 };
 
-function Rules({ apiBase, backendOnline, onToast }) {
+function Rules({ apiBase, backendOnline, onToast, demoMode = false, demoRules = null }) {
   const [rules, setRules] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [filter, setFilter] = useState('all');
   const [editing, setEditing] = useState(null);
   const datalistId = useRef(`framework-suggestions-${Math.random().toString(36).slice(2)}`);
+
+  const usingDemoRules = Boolean(demoMode && Array.isArray(demoRules) && demoRules.length);
+  const effectiveRules = usingDemoRules ? demoRules : rules;
 
   const loadRules = async () => {
     setIsLoading(true);
@@ -51,33 +54,36 @@ function Rules({ apiBase, backendOnline, onToast }) {
   };
 
   useEffect(() => {
+    if (usingDemoRules) {
+      return;
+    }
     if (!backendOnline) {
       return;
     }
     void loadRules();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendOnline]);
+  }, [backendOnline, usingDemoRules]);
 
   const frameworks = useMemo(() => {
-    if (!rules) return [];
-    return Array.from(new Set(rules.map((rule) => rule.framework))).sort();
-  }, [rules]);
+    if (!effectiveRules) return [];
+    return Array.from(new Set(effectiveRules.map((rule) => rule.framework))).sort();
+  }, [effectiveRules]);
 
   const filteredRules = useMemo(() => {
-    if (!rules) return [];
-    if (filter === 'all') return rules;
-    return rules.filter((rule) => rule.framework === filter);
-  }, [rules, filter]);
+    if (!effectiveRules) return [];
+    if (filter === 'all') return effectiveRules;
+    return effectiveRules.filter((rule) => rule.framework === filter);
+  }, [effectiveRules, filter]);
 
   const stats = useMemo(() => {
-    if (!rules) return { total: 0, enabled: 0, defaults: 0, custom: 0 };
+    if (!effectiveRules) return { total: 0, enabled: 0, defaults: 0, custom: 0 };
     return {
-      total: rules.length,
-      enabled: rules.filter((r) => r.is_enabled).length,
-      defaults: rules.filter((r) => r.is_default).length,
-      custom: rules.filter((r) => !r.is_default).length,
+      total: effectiveRules.length,
+      enabled: effectiveRules.filter((r) => r.is_enabled).length,
+      defaults: effectiveRules.filter((r) => r.is_default).length,
+      custom: effectiveRules.filter((r) => !r.is_default).length,
     };
-  }, [rules]);
+  }, [effectiveRules]);
 
   const startCreate = () => {
     setEditing({ ...EMPTY_FORM, mode: 'create' });
@@ -194,17 +200,25 @@ function Rules({ apiBase, backendOnline, onToast }) {
             className="btn btn-secondary"
             type="button"
             onClick={handleRestoreDefaults}
-            disabled={!backendOnline}
+            disabled={!backendOnline || usingDemoRules}
           >
             <RotateCounterClockwiseIcon />
             Restore Defaults
           </button>
-          <button className="btn btn-primary" type="button" onClick={startCreate} disabled={!backendOnline}>
+          <button className="btn btn-primary" type="button" onClick={startCreate} disabled={!backendOnline || usingDemoRules}>
             <PlusIcon />
             Add Rule
           </button>
         </div>
       </div>
+
+      {usingDemoRules ? (
+        <div className="card demo-callout">
+          <div className="card-body">
+            <strong>Demo rules preview</strong> These are the active checks used in the demo run. The real app loads editable rules from the backend, but the demo uses a stable local set so the walkthrough can show Rules, Results, and Chat together.
+          </div>
+        </div>
+      ) : null}
 
       <div className="rules-stats">
         <div className="rules-stat">
@@ -256,20 +270,20 @@ function Rules({ apiBase, backendOnline, onToast }) {
         <div className="card-body">
           {error ? <p className="error-text">{error}</p> : null}
 
-          {isLoading && !rules ? (
+          {isLoading && !effectiveRules ? (
             <div className="loading-card">
               <div className="spinner spinner-lg" />
               <p>Loading rules…</p>
             </div>
           ) : null}
 
-          {rules && filteredRules.length === 0 ? (
+          {effectiveRules && filteredRules.length === 0 ? (
             <div className="empty-card">
               <p>No rules{filter !== 'all' ? ` in ${filter}` : ''} yet. Add one or restore defaults to get started.</p>
             </div>
           ) : null}
 
-          {rules && filteredRules.length > 0 ? (
+          {effectiveRules && filteredRules.length > 0 ? (
             <table className="issues-table rules-table">
               <thead>
                 <tr>
@@ -288,9 +302,10 @@ function Rules({ apiBase, backendOnline, onToast }) {
                     <td>
                       <button
                         type="button"
-                        className={`toggle ${rule.is_enabled ? 'on' : ''}`}
-                        onClick={() => handleToggleEnabled(rule)}
-                        aria-label={`${rule.is_enabled ? 'Disable' : 'Enable'} ${rule.rule_id}`}
+                          className={`toggle ${rule.is_enabled ? 'on' : ''}`}
+                          onClick={() => handleToggleEnabled(rule)}
+                          aria-label={`${rule.is_enabled ? 'Disable' : 'Enable'} ${rule.rule_id}`}
+                          disabled={usingDemoRules}
                       />
                     </td>
                     <td>
@@ -320,6 +335,7 @@ function Rules({ apiBase, backendOnline, onToast }) {
                           title="Edit rule"
                           aria-label={`Edit ${rule.rule_id}`}
                           onClick={() => startEdit(rule)}
+                          disabled={usingDemoRules}
                         >
                           <EditIcon width={16} height={16} />
                         </button>
@@ -329,6 +345,7 @@ function Rules({ apiBase, backendOnline, onToast }) {
                           title="Delete rule"
                           aria-label={`Delete ${rule.rule_id}`}
                           onClick={() => handleDelete(rule)}
+                          disabled={usingDemoRules}
                         >
                           <TrashIcon width={16} height={16} />
                         </button>

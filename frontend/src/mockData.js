@@ -1,4 +1,63 @@
 export const DEMO_FILE_NAME = 'contract_q1_2026.pdf';
+export const DEMO_JOB_ID = 'demo-contract-q1-2026';
+
+export const DEMO_RULES = [
+  {
+    id: 1,
+    rule_id: 'GDPR-ART13',
+    framework: 'GDPR',
+    title: 'Privacy notice references must be present',
+    check: 'Look for a privacy notice or disclosure language that satisfies Article 13 GDPR obligations.',
+    severity: 'High',
+    is_default: true,
+    is_enabled: true,
+  },
+  {
+    id: 2,
+    rule_id: 'GDPR-ART28',
+    framework: 'GDPR',
+    title: 'Data Processing Agreement required for sub-processors',
+    check: 'Flag agreements that describe data processing but do not clearly define a DPA or processor obligations.',
+    severity: 'High',
+    is_default: true,
+    is_enabled: true,
+  },
+  {
+    id: 3,
+    rule_id: 'SOC2-CC6.1',
+    framework: 'SOC2',
+    title: 'Encryption standard should be explicit',
+    check: 'Check whether data-at-rest or data-in-transit encryption controls are named clearly.',
+    severity: 'Medium',
+    is_default: true,
+    is_enabled: true,
+  },
+  {
+    id: 4,
+    rule_id: 'ISO-A.18.1',
+    framework: 'ISO27001',
+    title: 'Legal and regulatory references should be identified',
+    check: 'Confirm the document names applicable legal or regulatory obligations and ties them to processing activity.',
+    severity: 'Low',
+    is_default: true,
+    is_enabled: true,
+  },
+  {
+    id: 5,
+    rule_id: 'INT-TERM-001',
+    framework: 'Internal Policy',
+    title: 'Termination notice must be easy to locate',
+    check: 'Verify that termination rights and notice periods are stated clearly in the agreement.',
+    severity: 'Medium',
+    is_default: false,
+    is_enabled: true,
+  },
+];
+
+export const DEMO_JOB = {
+  id: DEMO_JOB_ID,
+  filename: DEMO_FILE_NAME,
+};
 
 export const DASHBOARD_STATS = [
   {
@@ -183,6 +242,14 @@ export const COMPLIANCE_ISSUES = [
   },
 ];
 
+export const DEMO_CHAT_SEED_MESSAGES = [
+  {
+    role: 'assistant',
+    content:
+      'This demo chat is scoped to the uploaded contract. Try asking about payment terms, GDPR obligations, termination, or the compliance warnings.',
+  },
+];
+
 export const DEMO_RESULT = {
   text: `This Service Agreement ("Agreement") is entered into as of January 1, 2026, by and between Acme Corporation, a Delaware corporation ("Service Provider"), and GlobalTech Ltd., a United Kingdom company ("Client").
 
@@ -227,4 +294,15 @@ export const DEMO_RESULT = {
     ],
   },
   issues: COMPLIANCE_ISSUES,
+  processing: {
+    options: [
+      { key: 'extract_entities', label: 'Entity Extraction', enabled: true },
+      { key: 'index_for_chat', label: 'Index for Chat', enabled: true },
+      { key: 'run_compliance_check', label: 'Compliance Scoring', enabled: true },
+    ],
+    selected_frameworks: ['GDPR', 'SOC2', 'ISO27001', 'Internal Policy'],
+    entity_count: 8,
+    chunks_indexed: 4,
+    compliance_status: 'complete',
+  },
 };
