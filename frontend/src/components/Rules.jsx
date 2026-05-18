@@ -27,8 +27,10 @@ const EMPTY_FORM = {
 
 function Rules({ apiBase, backendOnline, onToast, demoMode = false, demoRules = null }) {
   const [rules, setRules] = useState(null);
+  const [frameworkOptions, setFrameworkOptions] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingFrameworks, setIsLoadingFrameworks] = useState(false);
   const [filter, setFilter] = useState('all');
   const [editing, setEditing] = useState(null);
   const datalistId = useRef(`framework-suggestions-${Math.random().toString(36).slice(2)}`);
@@ -53,6 +55,23 @@ function Rules({ apiBase, backendOnline, onToast, demoMode = false, demoRules = 
     }
   };
 
+  const loadFrameworks = async () => {
+    setIsLoadingFrameworks(true);
+    try {
+      const response = await fetch(`${apiBase}/frameworks`);
+      if (!response.ok) {
+        throw new Error(`Failed to load frameworks (${response.status})`);
+      }
+      const data = await response.json();
+      setFrameworkOptions(Array.isArray(data.frameworks) ? data.frameworks : []);
+    } catch (err) {
+      console.warn(err);
+      setFrameworkOptions([]);
+    } finally {
+      setIsLoadingFrameworks(false);
+    }
+  };
+
   useEffect(() => {
     if (usingDemoRules) {
       return;
@@ -61,13 +80,17 @@ function Rules({ apiBase, backendOnline, onToast, demoMode = false, demoRules = 
       return;
     }
     void loadRules();
+    void loadFrameworks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendOnline, usingDemoRules]);
 
   const frameworks = useMemo(() => {
-    if (!effectiveRules) return [];
-    return Array.from(new Set(effectiveRules.map((rule) => rule.framework))).sort();
-  }, [effectiveRules]);
+    if (usingDemoRules || !backendOnline || frameworkOptions.length === 0) {
+      if (!effectiveRules) return [];
+      return Array.from(new Set(effectiveRules.map((rule) => rule.framework))).sort();
+    }
+    return frameworkOptions;
+  }, [backendOnline, effectiveRules, frameworkOptions, usingDemoRules]);
 
   const filteredRules = useMemo(() => {
     if (!effectiveRules) return [];
